@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -265,6 +266,52 @@ def check_version_consistency(errors: list[str]) -> None:
         errors.append("marketplace.json version does not match plugin.json version")
 
 
+def _cross_check_manifest_against_git(
+    manifest: dict, modified: set[str], errors: list[str]
+) -> None:
+    """Compare the declared 'modified' set against git, when git can answer.
+
+    Silently skips when git, the repository, or the baseline commit is absent —
+    the manifest is the authority in those environments, and a check that errors
+    out on a tarball would just get disabled.
+    """
+    message = manifest.get("baselineCommitMessage")
+    if not message:
+        return
+    try:
+        found = subprocess.run(
+            ["git", "log", "--format=%H", "--fixed-strings", f"--grep={message}", "--all"],
+            cwd=ROOT, capture_output=True, text=True, timeout=15,
+        )
+        if found.returncode != 0 or not found.stdout.strip():
+            return
+        baseline = found.stdout.split()[-1]
+        # Compare the baseline against the WORKING TREE, not against HEAD. A
+        # baseline..HEAD diff only sees committed changes, so an uncommitted
+        # edit to a file declared 'unmodified' would slip through — which is
+        # exactly the hole this cross-check exists to close.
+        diff = subprocess.run(
+            ["git", "diff", "--name-only", "--diff-filter=M", baseline],
+            cwd=ROOT, capture_output=True, text=True, timeout=15,
+        )
+        if diff.returncode != 0:
+            return
+    except (OSError, subprocess.SubprocessError):
+        return
+
+    actual = {line for line in diff.stdout.splitlines() if line}
+    for path_str in sorted(actual - modified):
+        errors.append(
+            f"{path_str} differs from the upstream baseline but docs/derived-files.json "
+            f"does not list it under 'modified'"
+        )
+    for path_str in sorted(modified - actual):
+        errors.append(
+            f"docs/derived-files.json lists {path_str} as modified, but it is identical "
+            f"to the upstream baseline"
+        )
+
+
 def check_change_notice(errors: list[str]) -> None:
     """Apache-2.0 section 4(b): modified files must carry a change notice.
 
@@ -310,6 +357,12 @@ def check_change_notice(errors: list[str]) -> None:
             errors.append(
                 f"{path_str} cannot carry an inline comment, so NOTICE must list it"
             )
+
+    # The manifest is hand-maintained so the gate still works where .git does not
+    # exist (tarball, shallow clone, plugin cache). That leaves one hole: editing
+    # a file listed as unmodified without updating the manifest. Where git IS
+    # available, close it by comparing against the baseline commit.
+    _cross_check_manifest_against_git(manifest, modified, errors)
 
     # A file we authored must not claim upstream lineage it does not have.
     declared = modified | unmodified | comment_free | derived_new
