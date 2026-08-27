@@ -326,7 +326,9 @@ def rule_agent_sections(h: Harness, out: list[Finding]) -> None:
 
 def rule_dead_api(h: Harness, out: list[Finding]) -> None:
     """A removed API named as an instruction, not as history."""
-    for p in h.agents + h.skills:
+    # Workflows too. `orphan-agents` learned to read them and this did not, so
+    # `TeamCreate({team_name: ...})` sat in a workflow script and came back clean.
+    for p in h.agents + h.skills + h.workflows:
         text = p.read_text(encoding="utf-8")
         spans = call_spans(text)
         # char offset of the start of each line, so a span can be mapped to a line

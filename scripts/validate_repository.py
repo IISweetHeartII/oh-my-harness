@@ -502,6 +502,21 @@ def check_size_budget(errors: list[str]) -> None:
             errors.append(f"{rel(ref)} is {n} lines (budget {REFERENCE_MAX_LINES})")
 
 
+def _strip_shell_comments(body: str) -> str:
+    """Drop `#` comments from a shell snippet.
+
+    `run: # bash scripts/preflight.sh` executes nothing, and a comment-only
+    block scalar executes nothing either — both satisfied the gate. Reading a
+    run step as one string is the same substring mistake one level in.
+    """
+    out = []
+    for line in body.splitlines():
+        stripped = re.sub(r'(?:^|(?<=\s))#.*$', "", line)
+        if stripped.strip():
+            out.append(stripped)
+    return "\n".join(out)
+
+
 def _workflow_run_commands(text: str) -> list[str]:
     """The shell commands a GitHub workflow actually executes.
 
@@ -518,7 +533,7 @@ def _workflow_run_commands(text: str) -> list[str]:
             continue
         indent, rest = len(m.group(1)), m.group(2).strip()
         if rest and rest[0] not in "|>":
-            out.append(rest)
+            out.append(_strip_shell_comments(rest))
             i += 1
             continue
         # a block scalar: everything indented deeper than the `run:` key
@@ -530,7 +545,7 @@ def _workflow_run_commands(text: str) -> list[str]:
                 break
             block.append(line)
             i += 1
-        out.append("\n".join(block))
+        out.append(_strip_shell_comments("\n".join(block)))
     return out
 
 
@@ -548,8 +563,9 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
         errors.append(".github/workflows/validation.yml is missing")
         return
     commands = _workflow_run_commands(wf.read_text(encoding="utf-8"))
+    commands = [c for c in commands if c.strip()]
     if not commands:
-        errors.append("validation.yml has no run: steps at all — nothing is executed")
+        errors.append("validation.yml has no run: step that executes anything")
         return
     if not any("scripts/preflight.sh" in c for c in commands):
         errors.append("no run: step in validation.yml executes scripts/preflight.sh — "
@@ -590,6 +606,18 @@ def check_lint_rule_docs(errors: list[str]) -> None:
         if missing:
             errors.append(f"{rel(readme)} never names these implemented rules: "
                           f"{', '.join(missing)}")
+        lines = text.splitlines()
+        first_rule = next((n for n, l in enumerate(lines) if "`agent-naming`" in l), None)
+        if first_rule is None:
+            errors.append(f"{rel(readme)} has no rule table to check")
+        else:
+            intro = next((lines[n] for n in range(first_rule - 1, -1, -1)
+                          if lines[n].strip() and not lines[n].lstrip().startswith("|")), "")
+            counts = {int(n) for n in re.findall(r"(?<!\d)(\d+)(?!\d)", intro)}
+            if counts != {len(listed)}:
+                errors.append(
+                    f"{rel(readme)} introduces the rule table with {sorted(counts) or 'no number'}; "
+                    f"harness_lint implements {len(listed)} rules")
         row = next((l for l in text.splitlines() if "`agent-sections`" in l), None)
         if row is None:
             errors.append(f"{rel(readme)} has no `agent-sections` row to check")

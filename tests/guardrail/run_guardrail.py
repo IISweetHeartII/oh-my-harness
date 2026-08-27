@@ -196,6 +196,35 @@ def break_readme_section_count(repo: Path) -> str:
     return "a README telling readers the old contract size"
 
 
+def break_readme_rule_name(repo: Path) -> str:
+    """A README that stops naming an implemented rule.
+
+    The section-count case fires on the count alone, so removing the
+    rule-name coverage entirely went unnoticed — one case cannot prove two
+    independent halves of a check.
+    """
+    p = repo / "README_KO.md"
+    text = p.read_text(encoding="utf-8")
+    out = [l for l in text.splitlines(keepends=True) if "`agent-duplicates`" not in l]
+    if len(out) == len(text.splitlines(keepends=True)):
+        raise AssertionError("README_KO.md never mentioned agent-duplicates")
+    p.write_text("".join(out), encoding="utf-8")
+    return "a README that stopped naming an implemented rule"
+
+
+def break_ci_preflight_shell_comment(repo: Path) -> str:
+    """The run: step is commented out — it executes nothing."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    if "        run: bash scripts/preflight.sh" not in text:
+        raise AssertionError("expected a run: step invoking preflight.sh")
+    wf.write_text(text.replace(
+        "        run: bash scripts/preflight.sh",
+        "        run: |\n          echo skipping for now\n"
+        "          # bash scripts/preflight.sh\n", 1), encoding="utf-8")
+    return "the real call commented out behind a placeholder command"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -225,6 +254,8 @@ CASES = {
     "change-notice": break_change_notice,
     "lint-rule-docs": break_lint_rule_docs,
     "readme-rule-docs": break_readme_section_count,
+    "readme-rule-name": break_readme_rule_name,
+    "ci-preflight-shell-comment": break_ci_preflight_shell_comment,
     "ci-runs-preflight": break_ci_runs_preflight,
     "ci-preflight-comment-only": break_ci_preflight_comment_only,
 }
@@ -361,7 +392,11 @@ def hl_orphan_workflow_template_literal(h: Path) -> str:
     wf.mkdir(parents=True, exist_ok=True)
     (wf / "nightly.ts").write_text(
         "export const meta = { name: 'nightly', description: 'x' }\n"
-        "log(`starting billing-ghost sweep`)\n", encoding="utf-8")
+        "log(`billing-ghost`)\n", encoding="utf-8")
+    # exactly the name inside backticks: the prose fallback matches this shape,
+    # so removing the workflow exclusion makes the case stop firing. A longer
+    # sentence would not have matched the fallback either way, and the case
+    # would have passed without depending on the implementation at all.
     return "an agent named only inside a template literal in a workflow"
 
 
@@ -382,6 +417,20 @@ def hl_orphan_commented_call(h: Path) -> str:
     return "an agent kept alive only by a commented-out call"
 
 
+def hl_dead_api_in_workflow(h: Path) -> str:
+    """A removed API called from a workflow script.
+
+    `orphan-agents` learned to read workflows and `dead-api` did not, so this
+    came back clean while the call sat in the main v2 execution path.
+    """
+    wf = h / ".claude" / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "nightly.ts").write_text(
+        "export const meta = { name: 'nightly', description: 'x' }\n"
+        "TeamCreate({ team_name: 'billing' })\n", encoding="utf-8")
+    return "a workflow calling the removed TeamCreate API"
+
+
 LINT_CASES = {
     "agent-frontmatter": hl_agent_frontmatter,
     "agent-naming": hl_agent_naming,
@@ -399,6 +448,7 @@ LINT_CASES = {
     "orphan-agents-workflow-ghost": hl_orphan_workflow_ghost,
     "orphan-agents-template-literal": hl_orphan_workflow_template_literal,
     "orphan-agents-commented-call": hl_orphan_commented_call,
+    "dead-api-workflow": hl_dead_api_in_workflow,
 }
 
 # case name -> the rule it actually exercises, for the cases that are extra
@@ -409,6 +459,7 @@ LINT_ALIASES = {
     "orphan-agents-workflow-ghost": "orphan-agents",
     "orphan-agents-template-literal": "orphan-agents",
     "orphan-agents-commented-call": "orphan-agents",
+    "dead-api-workflow": "dead-api",
 }
 
 
@@ -722,7 +773,9 @@ def main() -> int:
     # so it is an extra case rather than a check of its own.
     ALIASES = {"dead-api-yaml": "dead-api",
                "ci-preflight-comment-only": "ci-runs-preflight",
-               "readme-rule-docs": "lint-rule-docs"}
+               "readme-rule-docs": "lint-rule-docs",
+               "readme-rule-name": "lint-rule-docs",
+               "ci-preflight-shell-comment": "ci-runs-preflight"}
     uncovered = sorted(set(known) - set(CASES) - set(ALIASES.values()))
     if uncovered:
         print(f"FAIL: checks with no guardrail case: {', '.join(uncovered)}", file=sys.stderr)

@@ -16,6 +16,10 @@ cd "$(dirname "$0")/.."
 fail=0
 run() { printf '\n== %s\n' "$1"; shift; "$@" || fail=1; }
 
+# 판정기부터 시험한다. 이게 틀리면 그 아래 «ok» 전부가 거짓말이고, 실제로
+# `verdict()` 의 exit-2 보호를 지우면 자기시험만 실패하고 preflight 는 통과했다 —
+# 자기시험이 강제 경로에 연결돼 있지 않았다.
+run "guardrail self-test" python3 tests/guardrail/run_guardrail.py --self-test
 run "repository gates"  python3 scripts/validate_repository.py
 run "guardrail suite"   python3 tests/guardrail/run_guardrail.py
 run "reference harness" python3 scripts/harness_lint.py tests/fixtures/clean-harness
