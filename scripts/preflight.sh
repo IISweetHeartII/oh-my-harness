@@ -33,7 +33,7 @@ import json, sys
 from pathlib import Path
 bad = []
 for path in sorted(Path('.').rglob('*.json')):
-    if any(p in {'.git', 'node_modules'} for p in path.parts):
+    if any(p in {'.git', 'node_modules', '.omc'} for p in path.parts):
         continue
     try:
         json.loads(path.read_text(encoding='utf-8'))
@@ -56,7 +56,7 @@ offenders = []
 for path in sorted(Path('.').rglob('*')):
     if not path.is_file() or path.suffix.lower() not in SUFFIXES:
         continue
-    if any(p in {'.git', 'node_modules'} for p in path.parts):
+    if any(p in {'.git', 'node_modules', '.omc'} for p in path.parts):
         continue
     lines = path.read_text(encoding='utf-8', errors='ignore').splitlines()
     has_bracket = any(l.startswith(OPEN) or l.startswith(CLOSE) for l in lines)

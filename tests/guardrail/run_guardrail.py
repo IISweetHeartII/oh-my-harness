@@ -304,6 +304,23 @@ def hl_orphan_workflow_ghost(h: Path) -> str:
     return "a workflow calling an agent with no definition"
 
 
+def hl_orphan_workflow_template_literal(h: Path) -> str:
+    """A name inside a template literal is a log message, not a call.
+
+    Workflow files are code. Applying the prose fallbacks (backticks, @name) to
+    them marks an agent as wired in because its name appeared in a log line.
+    """
+    ghost = h / ".claude" / "agents" / "billing-ghost.md"
+    ghost.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                     .replace("billing-analyst", "billing-ghost"))
+    wf = h / ".claude" / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "nightly.ts").write_text(
+        "export const meta = { name: 'nightly', description: 'x' }\n"
+        "log(`starting billing-ghost sweep`)\n", encoding="utf-8")
+    return "an agent named only inside a template literal in a workflow"
+
+
 LINT_CASES = {
     "agent-frontmatter": hl_agent_frontmatter,
     "agent-naming": hl_agent_naming,
@@ -319,6 +336,7 @@ LINT_CASES = {
     "agent-sections-tilde-fence": hl_agent_sections_tilde,
     "dead-api-multiline-call": hl_dead_api_multiline,
     "orphan-agents-workflow-ghost": hl_orphan_workflow_ghost,
+    "orphan-agents-template-literal": hl_orphan_workflow_template_literal,
 }
 
 # case name -> the rule it actually exercises, for the cases that are extra
@@ -327,6 +345,7 @@ LINT_ALIASES = {
     "agent-sections-tilde-fence": "agent-sections",
     "dead-api-multiline-call": "dead-api",
     "orphan-agents-workflow-ghost": "orphan-agents",
+    "orphan-agents-template-literal": "orphan-agents",
 }
 
 

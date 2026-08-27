@@ -29,7 +29,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Paths excluded from the repository-wide scans. The guardrail fixtures are
 # deliberately broken; scanning them would make the main run always fail.
-EXCLUDED_PARTS = {".git", "node_modules"}
+# `.omc/` is the agent runtime's scratch directory. An advisor transcript landed
+# there once and its quoted code examples tripped `dead-api` and `change-notice` —
+# the gates were right about the text and wrong about the file being ours.
+# Operational scratch is not repository content.
+EXCLUDED_PARTS = {".git", "node_modules", ".omc"}
 # The whole tests/ tree holds deliberately broken fixtures. Scanning it would
 # make the main run fail on files whose entire purpose is to be wrong.
 TESTS_DIR = ROOT / "tests"

@@ -398,6 +398,13 @@ def rule_orphan_agents(h: Harness, out: list[Finding]) -> None:
         text = p.read_text(encoding="utf-8")
         for a, b in SUBAGENT_REF_RE.findall(text):
             referenced.add(a or b)
+        if p in h.workflows:
+            # Workflow scripts are code, so the prose fallbacks below do not
+            # apply: a backtick is a template literal, not a mention, and `@name`
+            # is a decorator or an email. Only the call syntax above counts here.
+            # Accepting a template literal would mark an agent as wired in
+            # because its name appeared in a log message.
+            continue
         # 이전에는 이름이 본문에 «단어» 로 나오기만 하면 호출로 쳤다. 이름이
         # `build`·`review` 같은 일상어면 "we should build the binary" 한 줄에
         # 고아가 사라진다. 호출 문법으로만 인정한다.

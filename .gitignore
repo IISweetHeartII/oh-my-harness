@@ -15,3 +15,6 @@ _workspace/
 # byte-compiled python — generated, and version-specific
 __pycache__/
 *.pyc
+
+# OMC 운영 스크래치 — 레포 내용이 아니다
+.omc/
