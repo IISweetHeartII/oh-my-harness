@@ -2,7 +2,7 @@
      attribution block added, install target retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.2.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.3.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/실행모드-3종-teal.svg" alt="3 Execution Modes">
@@ -143,6 +143,33 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 │       └── build/SKILL.md
 └── CLAUDE.md            # 최소 포인터: 트리거 규칙 + 변경 이력
 ```
+
+## 생성된 하네스 검증
+
+팩토리는 규칙을 쓴다. 아무도 검사하지 않는 규칙은 아무도 안 지키는 규칙이고, 그게 이 분야의
+**측정된** 실패 모드다. 그래서 검증은 읽는 체크리스트가 아니라 **명령**이다.
+
+```bash
+/oh-my-harness:harness-lint          # 또는: python3 scripts/harness_lint.py .
+```
+
+생성된 `.claude/agents/` 와 `.claude/skills/` 에 결정적 규칙 7종:
+
+| 규칙 | 무엇을 잡나 |
+|---|---|
+| `agent-frontmatter` | `name` 이 파일명과 다름 — `subagent_type` 이 그 에이전트에 닿지 못한다 |
+| `agent-sections` | 에이전트 정의에 계약 섹션 누락 |
+| `dead-api` | 제거된 API 를 «지시»로 씀 (이력으로 언급한 것은 통과) |
+| `user-scope-shadowing` | 생성된 에이전트가 당신의 전역 `~/.claude/agents/` 를 조용히 덮음 |
+| `skill-frontmatter` | 스킬 이름·디렉터리 불일치, 깨진 `references/` 경로 |
+| `orphan-agents` | **아무도 안 부르는 에이전트**, 그리고 정의 없는 에이전트 호출 |
+| `model-tiering` | 3개 이상이 전부 한 티어에 고정 — v1 안티패턴 회귀 |
+
+문체나 품질을 점수 매기는 것은 하나도 없다. 논쟁하는 검사는 꺼지고, 꺼진 검사는
+커버리지처럼 «보이기» 때문에 없는 것보다 나쁘다.
+
+7종 각각도 증명돼 있다 — 가드레일이 매 규칙을 일부러 깨뜨리고 린터가 잡는지 확인한다.
+`/oh-my-harness:harness-audit` 는 기존 하네스를 읽기 전용으로 감사하면서 같은 린터를 돌린다.
 
 ## v1에서 마이그레이션
 

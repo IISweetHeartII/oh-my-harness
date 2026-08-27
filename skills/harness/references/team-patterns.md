@@ -1,3 +1,7 @@
+<!-- Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin):
+     agent frontmatter section expanded to the full runtime spec, including
+     isolation: worktree and the plugin-agent field caveats. -->
+
 # 팀 아키텍처 패턴 — 6패턴 + 품질 패턴 + 에이전트 정의
 
 SKILL.md Phase 2-2 / Phase 3의 보충 레퍼런스. 각 패턴에 v2 권장 실행 모드를 명시한다. 모드 정의는 `execution-modes.md` 참조.
@@ -165,10 +169,19 @@ SKILL.md Phase 2-2 / Phase 3의 보충 레퍼런스. 각 패턴에 v2 권장 실
 
 ```markdown
 ---
-name: agent-name
-description: "1-2문장 역할 설명. 트리거 키워드 나열."
-# tools: Read, Grep, Glob, Bash        ← 선택: 도구 제한 (읽기 전용 리뷰어 등)
-# model: sonnet                         ← 업무 특성 기반 선택 (model-selection-guide.md), 이유를 주석으로
+name: agent-name                        # 필수. 소문자+하이픈. `:` 는 플러그인 스코프 예약
+description: "1-2문장 역할 설명. 트리거 키워드 나열."   # 필수. 위임 여부를 이걸 보고 판정한다
+# --- 아래는 전부 선택. «필요한 것만» 쓴다 ---
+# tools: Read, Grep, Glob, Bash         # 허용목록. 생략하면 전부 상속
+# disallowedTools: Write, Edit          # 차단목록. tools 보다 먼저 적용된다
+# model: sonnet                         # 업무 특성 기반(model-selection-guide.md). 기본 inherit. 이유를 주석으로
+# effort: low                           # low|medium|high|xhigh|max — 세션 effort 재지정
+# maxTurns: 20                          # 폭주 방지 상한
+# isolation: worktree                   # 임시 git worktree 에서 격리 실행 (아래 표 참조)
+# skills: [team:analyze]                # 시작 시 미리 로드할 스킬
+# memory: project                       # user|project|local — 세션을 넘는 학습
+# background: true                      # foreground 요청에도 배경 유지
+# color: cyan                           # 구분용
 ---
 
 # Agent Name — 역할 한줄 요약
@@ -206,6 +219,29 @@ description: "1-2문장 역할 설명. 트리거 키워드 나열."
 ```
 
 **워크플로우 모드 전용 에이전트:** 통신 프로토콜 섹션 대신 "구조화 출력" 섹션을 넣는다 — 반환할 JSON shape을 명시하고, 최종 텍스트가 사람용 메시지가 아니라 **반환 데이터**임을 기재한다.
+
+### 5-1. 선택 필드를 «언제» 쓰나
+
+기본값으로 충분한 필드를 굳이 채우지 마라. 아래는 채워야 할 때가 분명한 것들이다.
+
+| 필드 | 채워야 할 때 | 안 채우면 |
+|---|---|---|
+| `tools` / `disallowedTools` | 읽기 전용 리뷰어·감사자 | 리뷰어가 자기가 리뷰하던 파일을 고친다 |
+| `isolation: worktree` | **여러 에이전트가 같은 저장소의 파일을 «동시에» 고친다** | 서로의 편집을 덮어쓴다. 에러가 아니라 유실이다 |
+| `maxTurns` | 루프가 있는 에이전트(생성-검증 재시도, 감독자) | 실패가 반복되면 턴을 다 태운다 |
+| `effort` | 기계적 변환(low) 또는 최고 난도 검증(high+) | 전부 세션 기본값으로 돌아 비용이 한쪽으로 쏠린다 |
+| `memory` | 같은 전문가를 여러 세션에 걸쳐 다시 부른다 | 매번 처음부터 설명해야 한다 |
+| `skills` | 그 에이전트가 «항상» 특정 스킬로 일한다 | 스킬을 알아서 찾길 기대하게 된다 |
+
+**`isolation: worktree` 상세.** 에이전트를 임시 git worktree(저장소 사본)에서 돌린다.
+- **비용**: worktree 생성에 에이전트당 수 초 + 디스크. 싸지 않다
+- **쓸 때**: 팬아웃·감독자 패턴에서 워커들이 파일을 병렬로 **쓴다**. 읽기만 하면 필요 없다
+- **안 쓰면 생기는 일**: 두 워커가 같은 파일을 만지면 나중 쓰기가 이긴다. **충돌 표시도 에러도 없이 한쪽 작업이 사라진다**
+- 변경이 없으면 worktree 는 자동 정리된다
+
+> 🔴 **플러그인이 배포하는 에이전트는 `hooks`·`mcpServers`·`permissionMode` 를 무시한다.**
+> 프로젝트 `.claude/agents/` 에 놓는 에이전트에서만 동작한다. 플러그인용 에이전트를 쓸 때
+> 이 셋에 기대는 설계를 하면 «설정했는데 안 먹는» 상태가 된다.
 
 ## 6. 에이전트 분리 기준
 

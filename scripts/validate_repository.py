@@ -30,7 +30,10 @@ ROOT = Path(__file__).resolve().parent.parent
 # Paths excluded from the repository-wide scans. The guardrail fixtures are
 # deliberately broken; scanning them would make the main run always fail.
 EXCLUDED_PARTS = {".git", "node_modules"}
-GUARDRAIL_DIR = ROOT / "tests" / "guardrail"
+# The whole tests/ tree holds deliberately broken fixtures. Scanning it would
+# make the main run fail on files whose entire purpose is to be wrong.
+TESTS_DIR = ROOT / "tests"
+GUARDRAIL_DIR = TESTS_DIR / "guardrail"
 
 REQUIRED_FILES = [
     ".claude-plugin/plugin.json",
@@ -120,7 +123,7 @@ def _scanned(patterns: tuple[str, ...]) -> list[Path]:
         for path in ROOT.rglob(pattern):
             if any(part in EXCLUDED_PARTS for part in path.parts):
                 continue
-            if GUARDRAIL_DIR in path.parents:
+            if TESTS_DIR in path.parents or path.parent == TESTS_DIR:
                 continue
             out.append(path)
     return sorted(set(out))

@@ -18,7 +18,8 @@
     "scripts/validate_repository.py",
     "skills/evolve/SKILL.md",
     "skills/harness/SKILL.md",
-    "skills/harness/references/orchestrator-template.md"
+    "skills/harness/references/orchestrator-template.md",
+    "skills/harness/references/team-patterns.md"
   ],
   "commentUnsupported": [
     "LICENSE"
@@ -40,7 +41,6 @@
     "skills/harness/references/skill-testing-guide.md",
     "skills/harness/references/skill-writing-guide.md",
     "skills/harness/references/team-examples.md",
-    "skills/harness/references/team-patterns.md",
     "skills/harness/references/workflow-recipes.md"
   ],
   "removed": [

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VALIDATOR = Path("scripts/validate_repository.py")
+HARNESS_LINT = ROOT / "scripts" / "harness_lint.py"
+CLEAN_FIXTURE = ROOT / "tests" / "fixtures" / "clean-harness"
 CASES_DIR = Path(__file__).resolve().parent / "cases"
 
 
@@ -127,6 +130,122 @@ CASES = {
 
 
 # --------------------------------------------------------------------------
+# harness-lint breakages — each corrupts a generated harness in one way
+# --------------------------------------------------------------------------
+
+def hl_agent_frontmatter(h: Path) -> str:
+    p = h / ".claude" / "agents" / "billing-analyst.md"
+    p.write_text(p.read_text().replace("name: billing-analyst", "name: something-else", 1))
+    return "agent frontmatter name no longer matches its filename"
+
+
+def hl_agent_sections(h: Path) -> str:
+    p = h / ".claude" / "agents" / "billing-analyst.md"
+    text = p.read_text()
+    p.write_text("\n".join(l for l in text.splitlines() if "## 작업 원칙" not in l))
+    return "dropped a required contract section from an agent"
+
+
+def hl_dead_api(h: Path) -> str:
+    p = h / ".claude" / "skills" / "build" / "SKILL.md"
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write("\nPhase 0: start the team with TeamCreate(team_name: \"billing\").\n")
+    return "orchestrator instructs the removed TeamCreate API"
+
+
+def hl_user_scope_shadowing(h: Path) -> str:
+    # planted into the fake HOME by the runner; here we just collide with it
+    src = h / ".claude" / "agents" / "billing-analyst.md"
+    dst = h / ".claude" / "agents" / "analyst.md"
+    dst.write_text(src.read_text().replace("name: billing-analyst", "name: analyst", 1))
+    return "generated an agent named 'analyst', shadowing the user's global one"
+
+
+def hl_skill_frontmatter(h: Path) -> str:
+    p = h / ".claude" / "skills" / "build" / "SKILL.md"
+    p.write_text(p.read_text().replace("name: build", "name: not-the-directory", 1))
+    return "skill frontmatter name no longer matches its directory"
+
+
+def hl_orphan_agents(h: Path) -> str:
+    p = h / ".claude" / "agents" / "billing-ghost.md"
+    p.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                 .replace("billing-analyst", "billing-ghost"))
+    return "added an agent no orchestrator references"
+
+
+def hl_model_tiering(h: Path) -> str:
+    third = h / ".claude" / "agents" / "billing-checker.md"
+    third.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                     .replace("billing-analyst", "billing-checker"))
+    for name in ("billing-analyst", "billing-builder", "billing-checker"):
+        p = h / ".claude" / "agents" / f"{name}.md"
+        p.write_text(p.read_text().replace("model: sonnet", "model: opus"))
+    # keep it referenced so orphan-agents is not what fires
+    s = h / ".claude" / "skills" / "build" / "SKILL.md"
+    with s.open("a", encoding="utf-8") as fh:
+        fh.write('\nPhase 3: `Agent(subagent_type: "billing-checker")`\n')
+    return "pinned every agent to the same model tier"
+
+
+LINT_CASES = {
+    "agent-frontmatter": hl_agent_frontmatter,
+    "agent-sections": hl_agent_sections,
+    "dead-api": hl_dead_api,
+    "user-scope-shadowing": hl_user_scope_shadowing,
+    "skill-frontmatter": hl_skill_frontmatter,
+    "orphan-agents": hl_orphan_agents,
+    "model-tiering": hl_model_tiering,
+}
+
+
+def run_lint(harness: Path, rule: str, home: Path) -> subprocess.CompletedProcess:
+    env = dict(os.environ, HOME=str(home))
+    return subprocess.run(
+        [sys.executable, str(HARNESS_LINT), str(harness), "--only", rule],
+        capture_output=True, text=True, env=env,
+    )
+
+
+def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
+    """Prove each harness-lint rule fires on a generated harness that breaks it."""
+    known = subprocess.run([sys.executable, str(HARNESS_LINT), "--list"],
+                           capture_output=True, text=True).stdout.split()
+    uncovered = sorted(set(known) - set(LINT_CASES))
+    if uncovered:
+        failures.append(f"harness-lint rules with no guardrail case: {', '.join(uncovered)}")
+        return
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # A fake HOME so user-scope-shadowing is deterministic on any machine,
+        # including CI, where ~/.claude/agents does not exist.
+        home = Path(tmp) / "home"
+        (home / ".claude" / "agents").mkdir(parents=True)
+        (home / ".claude" / "agents" / "analyst.md").write_text("---\nname: analyst\n---\n")
+
+        for rule, breaker in LINT_CASES.items():
+            clean = Path(tmp) / f"clean-{rule}"
+            shutil.copytree(CLEAN_FIXTURE, clean)
+            before = run_lint(clean, rule, home)
+            if before.returncode != 0:
+                failures.append(f"harness-lint {rule}: fires on the clean fixture — proves nothing")
+                if verbose:
+                    print(before.stderr)
+                continue
+
+            broken = Path(tmp) / f"broken-{rule}"
+            shutil.copytree(CLEAN_FIXTURE, broken)
+            what = breaker(broken)
+            after = run_lint(broken, rule, home)
+            if after.returncode == 0:
+                failures.append(f"harness-lint {rule}: did NOT fire after {what}")
+            else:
+                print(f"  ok  lint:{rule:20s} caught: {what}")
+                if verbose:
+                    print("      " + after.stderr.strip().replace("\n", "\n      "))
+
+
+# --------------------------------------------------------------------------
 
 def run_check(repo: Path, check: str) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -192,13 +311,16 @@ def main() -> int:
                     print("      " + result.stderr.strip().replace("\n", "\n      "))
             shutil.rmtree(broken)
 
+    guardrail_harness_lint(failures, args.verbose)
+
     if failures:
         print("\nGuardrail suite failed:", file=sys.stderr)
         for f in failures:
             print(f"- {f}", file=sys.stderr)
         return 1
 
-    print(f"\nGuardrail suite passed: {len(CASES)} checks each proven to fail on a broken tree")
+    print(f"\nGuardrail suite passed: {len(CASES)} repository checks + "
+          f"{len(LINT_CASES)} harness-lint rules, each proven to fire on a broken input")
     return 0
 
 

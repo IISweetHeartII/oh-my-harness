@@ -333,13 +333,29 @@ description은 스킬의 유일한 트리거 메커니즘이다. Claude는 트�
 
 생성된 하네스를 검증한다. 상세 테스트 방법론은 `references/skill-testing-guide.md` 참조.
 
-#### 6-1. 구조 검증
+#### 6-1. 구조 검증 — **눈으로 보지 말고 돌려라**
 
-- 모든 에이전트 파일이 올바른 위치에 있는지 확인
-- 스킬의 frontmatter(name, description) 검증
-- 에이전트 간 참조 일관성 확인
-- 커맨드(`.claude/commands/`)가 생성되지 않았는지 확인
-- **v1 잔재 검증**: 산출물에 `TeamCreate`/`TeamDelete`/`team_name`/실험 플래그 참조가 없는지 확인
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/harness_lint.py" .
+```
+
+이 한 줄이 아래를 결정적으로 검사한다. **출력과 exit code 를 사용자에게 그대로 보여준다.**
+
+| 규칙 | 무엇을 잡나 |
+|---|---|
+| `agent-frontmatter` | `name` 이 파일명과 다르면 `subagent_type` 이 그 에이전트에 닿지 못한다 |
+| `agent-sections` | 계약 섹션 누락(핵심 역할·작업 원칙·입출력 프로토콜·협업) |
+| `dead-api` | 제거된 API 를 «지시»로 쓴 줄 (설명은 통과) |
+| `user-scope-shadowing` | 사용자의 `~/.claude/agents/` 전역 에이전트를 같은 이름으로 덮음 |
+| `skill-frontmatter` | 스킬 frontmatter·디렉터리명 불일치, 깨진 `references/` 경로 |
+| `orphan-agents` | **아무도 안 부르는 에이전트**, 그리고 정의 없는 에이전트 호출 |
+| `model-tiering` | 3개 이상인데 전원 같은 티어 고정 (v1 안티패턴 회귀) |
+
+지적이 0건이 될 때까지 고치고 **다시 돌린다**. 플러그인 없이 쓰는 경우(글로벌 스킬 설치)엔
+이 스크립트가 없으므로, 위 7개 항목을 손으로 확인하고 «무엇을 어떻게 확인했는지»를 적는다.
+
+> 🔴 `orphan-agents` 는 이 팩토리의 고질병을 겨눈다 — 에이전트를 27개 만들 수는 있는데
+> 그중 몇 개가 실제로 불리는지 아무도 모르는 상태. 안 불리는 에이전트는 값 없는 비용이다.
 
 #### 6-2. 실행 모드별 검증
 
@@ -424,7 +440,7 @@ CLAUDE.md 포인터 등록과는 별개다 — 포인터는 모델이 읽고, �
 - [ ] 신규 스킬 생성 전 기존 스킬 중복 검토 완료 (Phase 4-0)
 - [ ] 생성물 본문 언어가 사용자 locale 과 일치 (`_workspace/00_locale.md` 기록)
 - [ ] Phase 6-7 사용자 핸드오프 완료 (트리거 예문·skill name·산출물 경로)
-- [ ] 산출물에 `TeamCreate`/`TeamDelete`/실험 플래그 참조 없음 (v1 잔재 금지)
+- [ ] `harness_lint.py` 지적 0건 — **출력을 근거로 첨부**. 「확인했다」는 근거가 아니다
 - [ ] 워크플로우 스크립트에 `.filter(Boolean)`·순수 리터럴 `meta`·배리어 최소화 적용
 - [ ] `.claude/commands/` — 아무것도 생성하지 않음
 - [ ] 기존 에이전트/스킬과 충돌 없음

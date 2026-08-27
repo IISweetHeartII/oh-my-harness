@@ -9,6 +9,40 @@
 **2.1.0 이하 항목은 업스트림의 기록**이며, 2.2.0 부터가 이 저장소의 변경입니다.
 채택·기각한 업스트림 PR 의 전수 판정은 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) 에 있습니다.
 
+## [2.3.0] - 2026-08-27
+
+이 릴리스의 한 줄: **팩토리가 «규칙을 쓰는 것»에서 «규칙이 지켜졌는지 검사하는 것»으로 넘어갔다.**
+규칙을 생성하고 아무도 검사하지 않는 것이 이 도메인의 측정된 실패 모드다.
+
+### Added
+
+- **`scripts/harness_lint.py` — 생성된 하네스를 계약에 대고 검사하는 린터.** 대상 프로젝트의
+  `.claude/agents/` 와 `.claude/skills/` 를 읽어 결정적 규칙 7종을 돌린다:
+  `agent-frontmatter` · `agent-sections` · `dead-api` · `user-scope-shadowing` ·
+  `skill-frontmatter` · `orphan-agents` · `model-tiering`.
+  전부 **셀 수 있는** 규칙이다 — 문체·품질을 점수 매기지 않는다. 논쟁하는 검사는 꺼지고,
+  꺼진 검사는 커버리지처럼 보여서 없는 것보다 나쁘다
+- **`orphan-agents`** — 아무 오케스트레이터도 안 부르는 에이전트, 그리고 정의 없는 에이전트 호출.
+  「에이전트 27개를 만들었는데 그중 몇 개가 실제로 도나」에 처음으로 답하는 규칙
+- **`commands/` 3종** — `/oh-my-harness:harness-lint` · `harness-audit` · `harness-evolve`
+- **`hooks/` — SessionStart v1 잔재 감지기.** 프로젝트가 제거된 API 를 «지시»하면 세션 시작에
+  1회 경고. `.claude/agents/` 가 없으면 쳐다보지도 않고, 설명문(「제거됐다」)에는 침묵한다
+- **에이전트 프론트매터 풀 스펙** — `disallowedTools` `effort` `maxTurns` `isolation: worktree`
+  `memory` `skills` `background` `color` 와 «언제 쓰나» 표.
+  🔴 **플러그인 배포 에이전트는 `hooks`·`mcpServers`·`permissionMode` 를 무시한다**는 함정도 명시
+- **`tests/fixtures/clean-harness/`** — 린터의 기준점이 되는 «올바른» 생성 하네스 샘플
+- 가드레일 확장: 저장소 검사 10종 + **harness-lint 규칙 7종**, 총 17개 게이트가 각각
+  깨진 입력에서 실제로 발화함을 증명
+
+### Changed
+
+- **Phase 6-1 이 산문 체크리스트에서 명령 한 줄로 바뀌었다** — 「확인했다」가 아니라
+  `harness_lint.py` 의 출력과 exit code 가 근거다
+- `marketplace.json` 에 description 추가 (`claude plugin validate` 경고 해소)
+- 저장소 스캔에서 `tests/` 전체 제외 — 일부러 깨뜨린 픽스처가 본검사를 깨지 않도록
+
+---
+
 ## [2.2.0] - 2026-08-27
 
 첫 파생 릴리스. 업스트림의 미머지 v2.1.0(PR #51 → 충돌해소본 #56)을 베이스로 삼고,

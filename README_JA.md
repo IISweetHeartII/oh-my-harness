@@ -3,7 +3,7 @@
      v2 content. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.2.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.3.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/実行モード-3種-teal.svg" alt="3 Execution Modes">
@@ -145,6 +145,33 @@ your-project/
 │       └── build/SKILL.md
 └── CLAUDE.md            # 最小限のポインタ: トリガールール + 変更履歴
 ```
+
+## 生成したハーネスの検証
+
+工場はルールを書きます。誰も検査しないルールは誰も守らないルールであり、それがこの分野で
+**実測された**失敗モードです。だから検証は読むチェックリストではなく**コマンド**です。
+
+```bash
+/oh-my-harness:harness-lint          # または: python3 scripts/harness_lint.py .
+```
+
+生成された `.claude/agents/` と `.claude/skills/` に対する決定的なルール 7 種:
+
+| ルール | 何を捕まえるか |
+|---|---|
+| `agent-frontmatter` | `name` がファイル名と不一致 — `subagent_type` がそのエージェントに届かない |
+| `agent-sections` | エージェント定義から契約セクションが欠落 |
+| `dead-api` | 削除済み API を«指示»として記述（履歴としての言及は通過） |
+| `user-scope-shadowing` | 生成エージェントがグローバルな `~/.claude/agents/` を黙って覆う |
+| `skill-frontmatter` | スキル名とディレクトリの不一致、壊れた `references/` パス |
+| `orphan-agents` | **誰も呼ばないエージェント**、および定義のないエージェント呼び出し |
+| `model-tiering` | 3 つ以上が全て同一ティア固定 — v1 アンチパターンの再来 |
+
+文体や品質を採点するものは一つもありません。議論する検査はオフにされ、オフになった検査は
+カバレッジのように«見える»ぶん、無いより悪いからです。
+
+7 種それぞれも証明済みです — ガードレールが各ルールを故意に破り、リンタが気づくか確認します。
+`/oh-my-harness:harness-audit` は既存ハーネスを読み取り専用で監査しつつ同じリンタを実行します。
 
 ## v1 からの移行
 

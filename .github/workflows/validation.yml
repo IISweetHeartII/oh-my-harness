@@ -35,6 +35,14 @@ jobs:
       - name: Repository gates
         run: python3 scripts/validate_repository.py
 
+      - name: harness-lint runs clean on the reference harness
+        run: |
+          python3 scripts/harness_lint.py tests/fixtures/clean-harness
+          # and refuses a project with nothing to lint, rather than passing it
+          if python3 scripts/harness_lint.py /tmp; then
+            echo "harness_lint returned 0 for a directory with no harness" && exit 1
+          fi
+
       - name: JSON parses
         run: |
           python3 - <<'PY'
