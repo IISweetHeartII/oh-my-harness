@@ -1,3 +1,7 @@
+<!-- Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin): the
+     upstream Japanese README was dropped by PR #56; this rewrites it from the
+     v2 content. -->
+
 <p align="center">
   <img src="https://img.shields.io/badge/Version-2.2.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>

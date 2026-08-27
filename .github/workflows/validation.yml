@@ -1,3 +1,8 @@
+# Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin).
+# Upstream PR #55 contributed the plugin/skill validation gate and PR #56 the
+# JSON + conflict-marker scan. This version merges the two workflows into one,
+# fixes a false positive in the conflict-marker scan, and adds the guardrail
+# job that proves each gate fails on a broken tree.
 name: Validation
 
 on:
@@ -5,58 +10,89 @@ on:
   push:
     branches:
       - main
-      - release/**
-      - steward/**
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
-    name: Validate docs and plugin metadata
+    name: Validate plugin, skills and docs
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Validate JSON files
+      - name: Repository gates
+        run: python3 scripts/validate_repository.py
+
+      - name: JSON parses
         run: |
           python3 - <<'PY'
-          import json
+          import json, sys
           from pathlib import Path
-
-          paths = sorted(Path('.').rglob('*.json'))
-          for path in paths:
+          bad = []
+          for path in sorted(Path('.').rglob('*.json')):
               if any(part in {'.git', 'node_modules'} for part in path.parts):
                   continue
-              with path.open('r', encoding='utf-8') as handle:
-                  json.load(handle)
-              print(f'valid json: {path}')
+              try:
+                  json.loads(path.read_text(encoding='utf-8'))
+              except json.JSONDecodeError as exc:
+                  bad.append(f'{path}: {exc}')
+          if bad:
+              sys.exit('Invalid JSON:\n' + '\n'.join(bad))
+          print('all JSON files parse')
           PY
 
-      - name: Scan for merge conflict markers
+      - name: No merge conflict markers
         run: |
           python3 - <<'PY'
+          import sys
           from pathlib import Path
 
-          markers = ('<<<<<<< ', '=======', '>>>>>>> ')
-          suffixes = {'.md', '.json', '.yml', '.yaml'}
+          # '=======' alone is also a Markdown setext heading underline, so a
+          # bare startswith check flags ordinary prose. Only treat it as a
+          # conflict marker when the same file also carries an opening or
+          # closing marker, which prose never does.
+          OPEN, MID, CLOSE = '<<<<<<< ', '=======', '>>>>>>> '
+          SUFFIXES = {'.md', '.json', '.yml', '.yaml', '.py'}
           offenders = []
 
           for path in sorted(Path('.').rglob('*')):
-              if not path.is_file():
+              if not path.is_file() or path.suffix.lower() not in SUFFIXES:
                   continue
               if any(part in {'.git', 'node_modules'} for part in path.parts):
                   continue
-              if path.suffix.lower() not in suffixes:
-                  continue
-              text = path.read_text(encoding='utf-8', errors='ignore')
-              for line_no, line in enumerate(text.splitlines(), start=1):
-                  if any(line.startswith(marker) for marker in markers):
-                      offenders.append(f'{path}:{line_no}:{line}')
+              lines = path.read_text(encoding='utf-8', errors='ignore').splitlines()
+              has_bracket = any(l.startswith(OPEN) or l.startswith(CLOSE) for l in lines)
+              for n, line in enumerate(lines, 1):
+                  if line.startswith(OPEN) or line.startswith(CLOSE):
+                      offenders.append(f'{path}:{n}:{line}')
+                  elif has_bracket and line.rstrip() == MID:
+                      offenders.append(f'{path}:{n}:{line}')
 
           if offenders:
-              raise SystemExit('Merge conflict markers found:\n' + '\n'.join(offenders))
+              sys.exit('Merge conflict markers found:\n' + '\n'.join(offenders))
           print('no merge conflict markers found')
           PY
+
+  guardrail:
+    name: Prove the gates actually fail
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # A green pipeline says this tree is clean. It does not say the gates
+      # would catch a dirty one. This job answers that second question by
+      # breaking each rule on purpose and requiring the gate to notice.
+      - name: Guardrail suite
+        run: python3 tests/guardrail/run_guardrail.py --verbose

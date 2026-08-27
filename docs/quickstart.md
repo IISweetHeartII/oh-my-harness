@@ -1,3 +1,7 @@
+<!-- Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin).
+     Install ids corrected per upstream PR #46 (@k002bill2) and retargeted
+     to this repository. -->
+
 # Quickstart — 5분 만에 첫 하네스
 
 **끝났을 때 갖게 되는 것:** 한 문장 프롬프트로 생성된, 도메인 특화 에이전트 3~5개와 스킬이 담긴 `.claude/agents/` + `.claude/skills/` 디렉토리, 그리고 샘플 태스크 1회 실행 결과.
@@ -13,16 +17,16 @@
 ## Step 1 — 마켓플레이스 추가 (30초)
 
 ```
-/plugin marketplace add revfactory/harness
+/plugin marketplace add IISweetHeartII/agent-foundry
 ```
 
 ## Step 2 — 플러그인 설치 (30초)
 
 ```
-/plugin install harness@harness
+/plugin install agent-foundry@agent-foundry-marketplace
 ```
 
-**실패 FAQ — 설치가 안 보임:** `/plugin list`로 확인. 없으면 Step 1부터 재실행, 있는데 비활성이면 `/plugin enable harness@harness`.
+**실패 FAQ — 설치가 안 보임:** `/plugin list`로 확인. 없으면 Step 1부터 재실행, 있는데 비활성이면 `/plugin enable agent-foundry@agent-foundry-marketplace`.
 
 ## Step 3 — 한 문장으로 하네스 생성 (2분)
 

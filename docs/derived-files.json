@@ -1,0 +1,55 @@
+{
+  "_comment": "Apache-2.0 section 4(b) bookkeeping. 'modified' and 'derivedNew' must carry an inline change notice; 'commentUnsupported' cannot, so NOTICE lists them instead. Classification is computed from the baseline commit (the unmodified upstream tree) — see docs/ATTRIBUTION.md.",
+  "upstream": "https://github.com/revfactory/harness",
+  "baselineCommitMessage": "baseline: upstream harness v2.1.0 (revfactory/harness PR #51, conflict-resolved as PR #56)",
+
+  "modified": [
+    ".claude-plugin/marketplace.json",
+    ".claude-plugin/plugin.json",
+    ".github/workflows/validation.yml",
+    "CHANGELOG.md",
+    "README.md",
+    "README_KO.md",
+    "docs/quickstart.md",
+    "scripts/validate_repository.py",
+    "skills/harness/SKILL.md",
+    "skills/harness/references/orchestrator-template.md"
+  ],
+
+  "commentUnsupported": [
+    ".claude-plugin/marketplace.json",
+    ".claude-plugin/plugin.json"
+  ],
+
+  "derivedNew": [
+    "README_JA.md",
+    "docs/ATTRIBUTION.md",
+    "skills/harness/references/search-efficiency.md",
+    "skills/harness/references/self-evolution-loop.md"
+  ],
+
+  "unmodified": [
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/ISSUE_TEMPLATE/question.yml",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".gitignore",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "docs/migration-v1-to-v2.md",
+    "skills/evolve/SKILL.md",
+    "skills/harness/references/execution-modes.md",
+    "skills/harness/references/model-selection-guide.md",
+    "skills/harness/references/qa-agent-guide.md",
+    "skills/harness/references/skill-testing-guide.md",
+    "skills/harness/references/skill-writing-guide.md",
+    "skills/harness/references/team-examples.md",
+    "skills/harness/references/team-patterns.md",
+    "skills/harness/references/workflow-recipes.md"
+  ],
+
+  "removed": [
+    ".github/workflows/harness-validation.yml"
+  ]
+}

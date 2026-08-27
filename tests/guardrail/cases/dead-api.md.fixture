@@ -1,0 +1,9 @@
+# Guardrail fixture — removed API used as an instruction
+
+This file exists so the `dead-api` check can be watched failing.
+
+The line below is the kind of thing the gate must catch: it tells the reader to
+call an API that Claude Code removed in 2.1.178, with no removal context, so a
+model reading it would improvise instead of erroring.
+
+Start the team with TeamCreate(team_name: "review-team", members: [...]).

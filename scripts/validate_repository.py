@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Validate the Harness repository's publishable plugin and skill assets.
+"""Validate the agent-foundry repository's publishable plugin and skill assets.
+
+Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin).
+Upstream shipped the required-files / manifest / skill-reference / link-warning
+checks; this version turns broken links into errors and adds the dead-api,
+version-consistency, skill-frontmatter and change-notice gates.
 
 This deliberately avoids strict Markdown style linting. The repository has a
-large amount of existing long-form/localized Markdown, so this gate focuses on
-trust checks that are stable and non-invasive for incoming PRs:
+large amount of long-form/localized Markdown, so this gate focuses on trust
+checks that are stable and non-invasive for incoming PRs.
 
-- required plugin/skill files are present
-- JSON manifests parse and contain expected metadata
-- the Harness skill has basic frontmatter and all backtick reference paths exist
-- relative Markdown link/image warnings surface existing missing local files
+Every check is selectable with --only so the guardrail suite can prove each
+gate actually fails on a deliberately broken fixture. A gate nobody has seen
+fail is not a gate.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -21,11 +26,18 @@ from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Paths excluded from the repository-wide scans. The guardrail fixtures are
+# deliberately broken; scanning them would make the main run always fail.
+EXCLUDED_PARTS = {".git", "node_modules", ".guardrail"}
+GUARDRAIL_DIR = ROOT / "tests" / "guardrail"
+
 REQUIRED_FILES = [
     ".claude-plugin/plugin.json",
     ".claude-plugin/marketplace.json",
     ".github/PULL_REQUEST_TEMPLATE.md",
     "skills/harness/SKILL.md",
+    "LICENSE",
+    "NOTICE",
 ]
 
 REQUIRED_PLUGIN_FIELDS = [
@@ -37,36 +49,77 @@ REQUIRED_PLUGIN_FIELDS = [
     "repository",
     "license",
 ]
+
 REFERENCE_RE = re.compile(r"`(references/[^`\n]+)`")
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]\n]*\]\(([^)\n]+)\)")
+CHANGELOG_RELEASE_RE = re.compile(r"^##\s*\[(\d+\.\d+\.\d+)\]", re.MULTILINE)
+
+# APIs removed from Claude Code 2.1.178. Referencing them as an instruction
+# silently produces a harness that does not do what its own docs claim, because
+# a missing tool makes the model improvise rather than error.
+DEAD_API_TOKENS = ["TeamCreate", "TeamDelete", "team_name", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"]
+# A line that says the API is gone is documentation, not an instruction.
+DEAD_API_NEGATIONS = [
+    "removed", "remove", "no longer", "does not exist", "deprecated", "legacy",
+    "gone", "dropped", "drop", "delete", "deleted",
+    "제거", "없다", "없습니다", "존재하지 않", "삭제", "소멸", "금지", "잔재", "v1",
+    "削除", "存在しません", "排除", "禁止", "不要",
+]
+# Whole files whose subject *is* the removed API. A migration guide has to name
+# what it migrates away from, and a changelog has to say what it removed.
+# Keeping these out of the scan is what keeps the gate's false-positive rate at
+# zero — a check that cries wolf gets switched off.
+DEAD_API_EXEMPT_FILES = {
+    "docs/migration-v1-to-v2.md",
+    "CHANGELOG.md",
+    "docs/ATTRIBUTION.md",
+}
+
+CHANGE_NOTICE_MARKERS = ("Modified from revfactory/harness", "Apache-2.0")
+DERIVED_MANIFEST = ROOT / "docs" / "derived-files.json"
+
+# Context efficiency is the product: a skill that does not fit comfortably in a
+# window stops being loaded in full. Budgets from upstream PR #41 (@mythkiven).
+SKILL_MAX_LINES = 520
+REFERENCE_MAX_LINES = 650
 
 
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
-def fail(errors: list[str], message: str) -> None:
-    errors.append(message)
-
-
 def load_json(path: Path, errors: list[str]) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        fail(errors, f"{rel(path)} is invalid JSON: {exc}")
+        errors.append(f"{rel(path)} is invalid JSON: {exc}")
     except OSError as exc:
-        fail(errors, f"{rel(path)} cannot be read: {exc}")
+        errors.append(f"{rel(path)} cannot be read: {exc}")
     return {}
 
 
-def validate_required_files(errors: list[str]) -> None:
+def scanned_markdown(include_guardrail: bool = False) -> list[Path]:
+    out = []
+    for md in sorted(ROOT.rglob("*.md")):
+        if any(part in EXCLUDED_PARTS for part in md.parts):
+            continue
+        if not include_guardrail and GUARDRAIL_DIR in md.parents:
+            continue
+        out.append(md)
+    return out
+
+
+# --------------------------------------------------------------------------
+# checks
+# --------------------------------------------------------------------------
+
+def check_required_files(errors: list[str]) -> None:
     for name in REQUIRED_FILES:
-        path = ROOT / name
-        if not path.is_file():
-            fail(errors, f"missing required file: {name}")
+        if not (ROOT / name).is_file():
+            errors.append(f"missing required file: {name}")
 
 
-def validate_plugin_manifests(errors: list[str]) -> None:
+def check_plugin_manifests(errors: list[str]) -> None:
     plugin_path = ROOT / ".claude-plugin" / "plugin.json"
     marketplace_path = ROOT / ".claude-plugin" / "marketplace.json"
     if not plugin_path.is_file() or not marketplace_path.is_file():
@@ -79,71 +132,86 @@ def validate_plugin_manifests(errors: list[str]) -> None:
 
     for field in REQUIRED_PLUGIN_FIELDS:
         if not plugin.get(field):
-            fail(errors, f"plugin.json missing required field: {field}")
+            errors.append(f"plugin.json missing required field: {field}")
 
-    if plugin.get("name") != "harness":
-        fail(errors, "plugin.json name must be 'harness'")
-
+    name = plugin.get("name")
     plugins = marketplace.get("plugins")
     if not isinstance(plugins, list) or not plugins:
-        fail(errors, "marketplace.json must contain at least one plugin entry")
+        errors.append("marketplace.json must contain at least one plugin entry")
         return
 
-    harness_entries = [entry for entry in plugins if entry.get("name") == "harness"]
-    if not harness_entries:
-        fail(errors, "marketplace.json missing plugin entry named 'harness'")
+    entries = [e for e in plugins if e.get("name") == name]
+    if not entries:
+        errors.append(f"marketplace.json missing plugin entry named {name!r}")
         return
 
-    entry = harness_entries[0]
+    entry = entries[0]
     if entry.get("version") != plugin.get("version"):
-        fail(errors, "marketplace harness version must match plugin.json version")
+        errors.append(
+            f"marketplace entry version {entry.get('version')!r} does not match "
+            f"plugin.json version {plugin.get('version')!r}"
+        )
     if entry.get("source") != "./":
-        fail(errors, "marketplace harness source must be './'")
+        errors.append("marketplace plugin source must be './'")
 
 
-def validate_skill(errors: list[str]) -> None:
-    skill_path = ROOT / "skills" / "harness" / "SKILL.md"
-    if not skill_path.is_file():
+def check_skill_frontmatter(errors: list[str]) -> None:
+    skills_dir = ROOT / "skills"
+    if not skills_dir.is_dir():
+        errors.append("missing skills/ directory")
         return
 
-    text = skill_path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        fail(errors, "skills/harness/SKILL.md missing YAML frontmatter")
-    else:
-        frontmatter_end = text.find("\n---", 4)
-        if frontmatter_end == -1:
-            fail(errors, "skills/harness/SKILL.md frontmatter is not closed")
-        else:
-            frontmatter = text[4:frontmatter_end]
-            for field in ("name:", "description:"):
-                if field not in frontmatter:
-                    fail(errors, f"skills/harness/SKILL.md frontmatter missing {field}")
+    found = False
+    for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+        found = True
+        name_expected = skill_md.parent.name
+        text = skill_md.read_text(encoding="utf-8")
+        if not text.startswith("---\n"):
+            errors.append(f"{rel(skill_md)} missing YAML frontmatter")
+            continue
+        end = text.find("\n---", 4)
+        if end == -1:
+            errors.append(f"{rel(skill_md)} frontmatter is not closed")
+            continue
+        frontmatter = text[4:end]
+        for field in ("name:", "description:"):
+            if field not in frontmatter:
+                errors.append(f"{rel(skill_md)} frontmatter missing {field}")
+        m = re.search(r"^name:\s*['\"]?([A-Za-z0-9_-]+)", frontmatter, re.MULTILINE)
+        if m and m.group(1) != name_expected:
+            errors.append(
+                f"{rel(skill_md)} frontmatter name {m.group(1)!r} does not match "
+                f"its directory {name_expected!r}"
+            )
+        for ref in REFERENCE_RE.findall(text):
+            if not (skill_md.parent / ref).is_file():
+                errors.append(f"{rel(skill_md)} has a broken reference path: {ref}")
 
-    for ref in REFERENCE_RE.findall(text):
-        target = ROOT / "skills" / "harness" / ref
-        if not target.is_file():
-            fail(errors, f"broken harness skill reference: {ref}")
+    if not found:
+        errors.append("no skills/*/SKILL.md found")
 
 
-def should_skip_link(raw_url: str) -> bool:
+def _skip_link(raw_url: str) -> bool:
     raw_url = raw_url.strip()
-    if not raw_url or raw_url == "#" or raw_url.startswith("#"):
+    if not raw_url or raw_url.startswith("#"):
         return True
     parsed = urlparse(raw_url)
     return bool(parsed.scheme or parsed.netloc)
 
 
-def validate_markdown_links(warnings: list[str]) -> None:
-    for md in ROOT.rglob("*.md"):
-        if any(part in {".git", "node_modules"} for part in md.parts):
-            continue
+def check_link_existence(errors: list[str]) -> None:
+    """Broken local links are errors, not warnings.
+
+    Upstream reported these as warnings. A warning next to a green check mark
+    reads as 'fine', which is how four non-existent docs stayed referenced for
+    months.
+    """
+    for md in scanned_markdown():
         text = md.read_text(encoding="utf-8")
         for raw_url in MARKDOWN_LINK_RE.findall(text):
-            if should_skip_link(raw_url):
+            if _skip_link(raw_url):
                 continue
-            clean = raw_url.split("#", 1)[0]
-            clean = clean.split("?", 1)[0]
-            clean = unquote(clean).strip()
+            clean = unquote(raw_url.split("#", 1)[0].split("?", 1)[0]).strip()
             if not clean:
                 continue
             target = (md.parent / clean).resolve()
@@ -152,21 +220,153 @@ def validate_markdown_links(warnings: list[str]) -> None:
             except ValueError:
                 continue
             if not target.exists():
-                warnings.append(f"{rel(md)} links to missing local path: {raw_url}")
+                errors.append(f"{rel(md)} links to a missing local path: {raw_url}")
+
+
+def check_dead_api(errors: list[str]) -> None:
+    """Flag removed-API tokens used as instructions rather than as history."""
+    for md in scanned_markdown():
+        if rel(md) in DEAD_API_EXEMPT_FILES:
+            continue
+        for lineno, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
+            hits = [t for t in DEAD_API_TOKENS if t in line]
+            if not hits:
+                continue
+            lowered = line.lower()
+            if any(neg.lower() in lowered for neg in DEAD_API_NEGATIONS):
+                continue
+            errors.append(
+                f"{rel(md)}:{lineno} references removed API {', '.join(hits)} "
+                f"as an instruction (add the removal context, or delete the line)"
+            )
+
+
+def check_version_consistency(errors: list[str]) -> None:
+    plugin = load_json(ROOT / ".claude-plugin" / "plugin.json", errors)
+    marketplace = load_json(ROOT / ".claude-plugin" / "marketplace.json", errors)
+    changelog = ROOT / "CHANGELOG.md"
+    if not plugin or not marketplace or not changelog.is_file():
+        return
+
+    plugin_version = plugin.get("version")
+    releases = CHANGELOG_RELEASE_RE.findall(changelog.read_text(encoding="utf-8"))
+    if not releases:
+        errors.append("CHANGELOG.md has no '## [x.y.z]' release heading")
+        return
+
+    if releases[0] != plugin_version:
+        errors.append(
+            f"CHANGELOG.md latest release [{releases[0]}] does not match "
+            f"plugin.json version {plugin_version!r}"
+        )
+
+    entries = [e for e in marketplace.get("plugins", []) if e.get("name") == plugin.get("name")]
+    if entries and entries[0].get("version") != plugin_version:
+        errors.append("marketplace.json version does not match plugin.json version")
+
+
+def check_change_notice(errors: list[str]) -> None:
+    """Apache-2.0 section 4(b): modified files must carry a change notice.
+
+    docs/derived-files.json records which paths came from upstream and which of
+    those we modified. Both directions are checked, so a file cannot quietly
+    drop its notice and a file we wrote ourselves cannot falsely claim one.
+    """
+    if not DERIVED_MANIFEST.is_file():
+        errors.append("missing docs/derived-files.json (change-notice manifest)")
+        return
+
+    manifest = load_json(DERIVED_MANIFEST, errors)
+    if not manifest:
+        return
+
+    modified = set(manifest.get("modified", []))
+    unmodified = set(manifest.get("unmodified", []))
+    comment_free = set(manifest.get("commentUnsupported", []))
+    # Files we authored that nonetheless carry upstream-licensed contributions
+    # (an adopted pull request). Not in the baseline tree, but still derivative.
+    derived_new = set(manifest.get("derivedNew", []))
+
+    for path_str in sorted(modified | unmodified | comment_free | derived_new):
+        if not (ROOT / path_str).is_file():
+            errors.append(f"docs/derived-files.json lists a missing path: {path_str}")
+
+    for path_str in sorted((modified | derived_new) - comment_free):
+        path = ROOT / path_str
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if not all(marker in text for marker in CHANGE_NOTICE_MARKERS):
+            errors.append(
+                f"{path_str} is a modified upstream file but carries no change notice "
+                f"(needs {' + '.join(CHANGE_NOTICE_MARKERS)})"
+            )
+
+    for path_str in sorted(comment_free):
+        if path_str not in modified:
+            continue
+        notice = ROOT / "NOTICE"
+        if notice.is_file() and path_str not in notice.read_text(encoding="utf-8"):
+            errors.append(
+                f"{path_str} cannot carry an inline comment, so NOTICE must list it"
+            )
+
+    # A file we authored must not claim upstream lineage it does not have.
+    declared = modified | unmodified | comment_free | derived_new
+    for md in scanned_markdown():
+        path_str = rel(md)
+        if path_str in declared:
+            continue
+        if CHANGE_NOTICE_MARKERS[0] in md.read_text(encoding="utf-8"):
+            errors.append(
+                f"{path_str} carries an upstream change notice but is not listed "
+                f"in docs/derived-files.json"
+            )
+
+
+def check_size_budget(errors: list[str]) -> None:
+    for skill_md in sorted((ROOT / "skills").glob("*/SKILL.md")):
+        n = len(skill_md.read_text(encoding="utf-8").splitlines())
+        if n > SKILL_MAX_LINES:
+            errors.append(f"{rel(skill_md)} is {n} lines (budget {SKILL_MAX_LINES})")
+    for ref in sorted((ROOT / "skills").glob("*/references/*.md")):
+        n = len(ref.read_text(encoding="utf-8").splitlines())
+        if n > REFERENCE_MAX_LINES:
+            errors.append(f"{rel(ref)} is {n} lines (budget {REFERENCE_MAX_LINES})")
+
+
+CHECKS = {
+    "required-files": check_required_files,
+    "size-budget": check_size_budget,
+    "plugin-manifests": check_plugin_manifests,
+    "skill-frontmatter": check_skill_frontmatter,
+    "link-existence": check_link_existence,
+    "dead-api": check_dead_api,
+    "version-consistency": check_version_consistency,
+    "change-notice": check_change_notice,
+}
 
 
 def main() -> int:
-    errors: list[str] = []
-    warnings: list[str] = []
-    validate_required_files(errors)
-    validate_plugin_manifests(errors)
-    validate_skill(errors)
-    validate_markdown_links(warnings)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--only",
+        action="append",
+        choices=sorted(CHECKS),
+        help="run only the named check (repeatable); default runs all",
+    )
+    parser.add_argument("--list", action="store_true", help="list check names and exit")
+    args = parser.parse_args()
 
-    if warnings:
-        print("Repository validation warnings:", file=sys.stderr)
-        for warning in warnings:
-            print(f"- {warning}", file=sys.stderr)
+    if args.list:
+        for name in sorted(CHECKS):
+            print(name)
+        return 0
+
+    selected = args.only or sorted(CHECKS)
+    errors: list[str] = []
+    for name in selected:
+        CHECKS[name](errors)
 
     if errors:
         print("Repository validation failed:", file=sys.stderr)
@@ -174,7 +374,7 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
 
-    print("Repository validation passed")
+    print(f"Repository validation passed ({len(selected)} checks: {', '.join(selected)})")
     return 0
 
 

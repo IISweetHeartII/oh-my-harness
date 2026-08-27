@@ -1,0 +1,8 @@
+# Guardrail fixture — broken local link
+
+This file exists so the `link-existence` check can be watched failing.
+It links to [a document that does not exist](./this-file-is-not-here.md).
+
+Stored with a `.fixture` extension so the repository-wide `*.md` scan never
+sees it in place; the guardrail runner copies it into `docs/` as `.md` inside a
+throwaway tree.

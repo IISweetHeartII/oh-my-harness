@@ -16,3 +16,14 @@ upstream main by Rudlord Rud (@chipoto69) as pull request #56.
 See CHANGELOG.md for the list of changes and docs/ATTRIBUTION.md for the
 per-pull-request disposition and credit to upstream contributors whose work
 is included here.
+
+Files modified from the originals are listed in docs/derived-files.json.
+Two of them cannot carry an inline notice because JSON has no comment syntax,
+so they are named here instead:
+
+  .claude-plugin/plugin.json
+  .claude-plugin/marketplace.json
+
+The following file was removed from the upstream tree:
+
+  .github/workflows/harness-validation.yml   (merged into .github/workflows/validation.yml)

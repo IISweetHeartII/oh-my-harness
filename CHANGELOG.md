@@ -1,18 +1,50 @@
+<!-- Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin).
+     Releases 2.1.0 and earlier are upstream's; 2.2.0 is this derivative's. -->
+
 # Changelog
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따릅니다.
 
-## [Unreleased]
+`agent-foundry` 는 [revfactory/harness](https://github.com/revfactory/harness) 의 파생본입니다.
+**2.1.0 이하 항목은 업스트림의 기록**이며, 2.2.0 부터가 이 저장소의 변경입니다.
+채택·기각한 업스트림 PR 의 전수 판정은 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) 에 있습니다.
+
+## [2.2.0] - 2026-08-27
+
+첫 파생 릴리스. 업스트림의 미머지 v2.1.0(PR #51 → 충돌해소본 #56)을 베이스로 삼고,
+열린 PR 24건을 전수 판정해 채택분을 반영하고, 검사기 자체를 검증하는 CI 를 세웠다.
 
 ### Added
-- 신규 에이전트/스킬 생성 전 중복 검토 단계 (Phase 3-0, Phase 4-0)
-- `references/agent-design-patterns.md` "에이전트 재사용 설계" 섹션
-- `references/skill-writing-guide.md` §9 "스킬 재사용 설계"
+
+- **`docs/ATTRIBUTION.md`** — 업스트림 열린 PR 24건 전수 판정표(ADOPTED 10 / SUPERSEDED 2 / REJECTED 12)와 기여자 크레딧
+- **`NOTICE`** — Apache-2.0 §4 귀속 고지, PR #51/#56 계보
+- **`README_JA.md`** — 업스트림 PR #56 이 유실한 일본어 README 를 v2 기준으로 재작성
+- **Phase 1-7 출력 locale 결정** — 생성물 본문 언어가 사용자 locale 을 따르도록. `_workspace/00_locale.md` 기록 (upstream PR #38, [@mythkiven](https://github.com/mythkiven))
+- **Phase 6-7 사용자 핸드오프** — 구축 직후 트리거 예문·skill name·산출물 경로 안내 (upstream PR #6, [@gd452](https://github.com/gd452))
+- **`references/self-evolution-loop.md` + Phase 7 포인터** — 증거 주도 자율 진화 루프(옵트인). 자격 게이트 A/B/C, 실패 시그니처 `(c, q, m)`, held-in/held-out 비퇴행 수용 규칙 (upstream PR #45, [@epoko77-ai](https://github.com/epoko77-ai))
+- **`references/search-efficiency.md` + Phase 1-8 포인터** — Grep/Read 4-Step 탐색 프로토콜(선택) (upstream PR #12, [@namojo](https://github.com/namojo))
+- **`orchestrator-template.md` Incremental QA 공통 규칙** — QA 를 마지막 단계에만 두지 않도록 전 템플릿에 검증 훅 (upstream PR #6, [@gd452](https://github.com/gd452))
+- **description 중국어 트리거** — 트리거 매칭 확장 (upstream PR #23, [@hyhmrright](https://github.com/hyhmrright))
+- **CI 검사 4종 신설** — `link-existence` · `dead-api` · `version-consistency` · `change-notice`
+- **`size-budget` 검사** — SKILL.md 520줄 / reference 650줄 예산 (upstream PR #41, [@mythkiven](https://github.com/mythkiven))
+- **`tests/guardrail/`** — 검사기 8종 각각을 일부러 깨뜨려 «실제로 FAIL 하는지» 증명하는 스위트. CI 별도 잡으로 상시 실행
 
 ### Changed
-- Phase 선택 매트릭스에 3-0/4-0 명시
-- Phase 2-3에 재사용 검토 단계 포인터 추가
-- 산출물 체크리스트에 재사용 검토 항목 2개 추가
+
+- **`agent-foundry` 로 리브랜드** — 플러그인·마켓플레이스 이름, 저자, 저장소 URL. **스킬 이름 `harness`·`evolve` 는 유지** (트리거 문구와 v1 마이그레이션 경로 보존)
+- **깨진 로컬 링크를 경고에서 에러로 승격** — 초록불 옆의 경고는 «괜찮음»으로 읽힌다. 실재하지 않는 문서 4개가 업스트림에서 몇 달간 참조된 원인
+- **Phase 0 / Phase 3-0 중복 검토가 유저 스코프까지 감사** — `~/.claude/agents/` 를 함께 읽는다. 프로젝트 스코프가 유저 스코프를 덮으므로, 같은 이름을 만들면 사용자의 전역 에이전트가 경고 없이 사라진다
+- **워크플로우 통합** — `harness-validation.yml` 을 `validation.yml` 로 합침
+
+### Fixed
+
+- **`docs/quickstart.md` 설치 명령** — 존재하지 않는 `harness@harness` 를 안내하고 있었다 (upstream PR #46, [@k002bill2](https://github.com/k002bill2))
+- **충돌마커 검사의 거짓양성** — `=======` 는 마크다운 setext 제목 밑줄과 같다. 같은 파일에 여는/닫는 마커가 있을 때만 중간 마커로 판정하도록 수정
+- **`dead-api` 검사의 거짓양성** — 마이그레이션 가이드·체인지로그는 제거된 API 를 «설명»해야 한다. 파일 단위 예외 + 부정어 확장으로 거짓양성 0
+
+### Removed
+
+- **`[Unreleased]` 섹션의 v1 잔재** — v2 가 삭제한 `references/agent-design-patterns.md` 를 가리키고 있었다
 
 ---
 
