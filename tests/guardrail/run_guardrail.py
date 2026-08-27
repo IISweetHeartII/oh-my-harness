@@ -97,9 +97,17 @@ def break_size_budget(repo: Path) -> str:
     return "padded skills/harness/SKILL.md past its line budget"
 
 
+def break_readme_parity(repo: Path) -> str:
+    path = repo / "README_JA.md"
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("\n## 翻訳がずれたことにするための余分な節\n")
+    return "added a section to README_JA.md that README.md does not have"
+
+
 CASES = {
     "required-files": break_required_files,
     "size-budget": break_size_budget,
+    "readme-parity": break_readme_parity,
     "plugin-manifests": break_plugin_manifests,
     "skill-frontmatter": break_skill_frontmatter,
     "link-existence": break_link_existence,

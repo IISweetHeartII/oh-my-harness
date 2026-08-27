@@ -49,7 +49,7 @@ copy is worse than a missing one.
 | [#46](https://github.com/revfactory/harness/pull/46) | fix(docs): correct plugin install command | [@k002bill2](https://github.com/k002bill2) | ADOPTED | Still valid against v2: `docs/quickstart.md` continued to tell users to install `harness@harness`, which does not resolve. Applied with this repository's plugin id. |
 | [#45](https://github.com/revfactory/harness/pull/45) | feat: add opt-in evidence-driven self-evolution loop to Phase 7 | [@epoko77-ai](https://github.com/epoko77-ai) | ADOPTED | v2's `skills/evolve/SKILL.md` covers only feedback-driven evolution; it has no held-out non-regression gate. This adds the one thing the factory was missing — a way to tell whether an added agent actually helped, and to drop it when it did not. |
 | [#44](https://github.com/revfactory/harness/pull/44) | fix: Phase 0 consistency, incremental QA, and user handoff | [@mythkiven](https://github.com/mythkiven) | SUPERSEDED | The Phase 0 numbering fix is already in `skills/harness/SKILL.md` (Phase 5-5 and the output checklist both say Phase 0). The other two proposals are the same as PR #6, which came first and is credited there. |
-| [#43](https://github.com/revfactory/harness/pull/43) | docs: add Cursor runtime port guide | [@mythkiven](https://github.com/mythkiven) | REJECTED — out of scope | One document, but we have no way to verify Cursor behaviour, and CI cannot check it. We do not ship instructions we cannot test. |
+| [#43](https://github.com/revfactory/harness/pull/43) | docs: add Cursor runtime port guide | [@mythkiven](https://github.com/mythkiven) | REJECTED — regression | `docs/cursor-port.md` presents `TeamCreate` / `TeamDelete` / `TaskCreate` as the current Claude Code API and tells readers `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` "applies to Claude Code only". Those were removed in 2.1.178. Shipping it would reintroduce the exact defect this fork exists to fix. |
 | [#42](https://github.com/revfactory/harness/pull/42) | docs: add Simplified Chinese localization and skill triggers | [@mythkiven](https://github.com/mythkiven) | REJECTED — regression | `README_ZH.md` translates the v1 body. Merging it would resurrect the removed `TeamCreate` guidance in Chinese, in a language we cannot keep current. |
 | [#41](https://github.com/revfactory/harness/pull/41) | chore: add validate_skills script and lint CI workflow | [@mythkiven](https://github.com/mythkiven) | ADOPTED (partial) | Its frontmatter and reference checks are already covered by `scripts/validate_repository.py`, but its **size budget** for `SKILL.md` and reference files is unique and worth keeping — context efficiency is the product here. The scoped `markdownlint` step is not adopted: upstream's own PR #55 verified it fails on pre-existing Markdown debt. |
 | [#40](https://github.com/revfactory/harness/pull/40) | feat: allow per-task model tiering instead of forcing opus | [@mythkiven](https://github.com/mythkiven) | SUPERSEDED | `skills/harness/references/model-selection-guide.md` (v2.1.0) replaces the blanket `model: "opus"` pin with a per-agent tier decision. |
@@ -65,6 +65,25 @@ copy is worse than a missing one.
 | [#11](https://github.com/revfactory/harness/pull/11) | feat(harness): Memo 패턴 — 분산 슬롯 + 공유 헤더 (선택) | [@namojo](https://github.com/namojo) | REJECTED — out of scope | Designed before the Workflow tool existed. v2 covers durable state with `_workspace/` and workflow `resumeFromRunId`; a second, parallel persistence convention would compete with it. |
 | [#10](https://github.com/revfactory/harness/pull/10) | feat(harness): add interview-driven HRD workflow and HITL architecture review gates | [@leebaro](https://github.com/leebaro) | REJECTED — out of scope | The HITL review gate is the appealing half, but it is wired into a six-state HRD detection rewrite of Phase 0 that cannot be separated cleanly from the v2 phase structure. |
 | [#6](https://github.com/revfactory/harness/pull/6) | fix: Phase 번호 일관성·Incremental QA 훅·사용자 핸드오프 3건 | [@gd452](https://github.com/gd452) | ADOPTED (partial) | The Phase-numbering third is already fixed in v2. The other two are not: v2 has no incremental-QA rule and no user-handoff step, so a user who just had a harness built is not told how to invoke it. Both adopted, adapted to v2's execution-mode names. |
+
+## One upstream decision deliberately reversed
+
+Upstream's v2 changelog records dropping the Japanese README with a stated reason:
+*"README_JA — maintenance cost versus low utility. Keeping EN/KO only."* That reason was
+sound, and this repository reverses it, so it owes an explanation.
+
+The objection to a translation is not the translation — it is that nobody can tell when it
+has gone stale. Rejecting PRs #22 and #42 (Chinese) for exactly that reason while quietly
+adding Japanese would have been inconsistent. So the drift was made **detectable** instead:
+the `readme-parity` gate requires every `README_*.md` to carry the same version badge and
+the same number of top-level sections as `README.md`, and CI fails when they diverge.
+
+That gate immediately found pre-existing drift — the Korean README had been missing two
+sections since upstream — which is the point. A translation is maintainable when its
+staleness is a build failure rather than something a reader notices first.
+
+The same gate is what would make a future Chinese README viable. PRs #22 and #42 remain
+rejected because they translate the **v1** body, not because the language is unwelcome.
 
 ## Contributors whose work is included
 

@@ -51,6 +51,29 @@ v2는 현행 Claude Code 멀티에이전트 런타임에 맞춰 바닥부터 재
 - **검증 체계** — 트리거 검증, 드라이런, With-skill vs Without-skill A/B 테스트 (A/B 자체를 워크플로우로 구성 가능)
 - **진화** — `/harness:evolve`가 사용 피드백을 측정 가능한 다음 세대 개선으로 변환
 
+## 카테고리 — 이 프로젝트의 자리
+
+이 프로젝트는 Claude Code 생태계의 **L3 메타 팩토리** 층에 있다 — 하네스«인» 것이 아니라 하네스를 «만드는» 층이다. L3 안에서는 **팀 아키텍처 팩토리** 하위 층을 차지한다.
+
+| 층 | 하는 일 | 공존하는 이웃 |
+|----|---------|--------------|
+| **L3 — 메타 팩토리 / 팀 아키텍처 팩토리** (여기) | 도메인 한 문장 → 에이전트 팀 + 스킬. 사전 정의된 6가지 팀 패턴 경유 | — |
+| L3 — 메타 팩토리 / 런타임 설정 팩토리 | 결정적·재현 가능한 런타임 설정 | [coleam00/Archon](https://github.com/coleam00/Archon) |
+| L3 — 메타 팩토리 / Codex 런타임 포트 | 같은 개념, Codex 런타임 | [SaehwanPark/meta-harness](https://github.com/SaehwanPark/meta-harness) |
+| L2 — 하네스 간 워크플로우 | 여러 하네스에 걸쳐 스킬·규칙·훅을 표준화 | [affaan-m/ECC](https://github.com/affaan-m/everything-claude-code) |
+
+> Archon 은 결정적 런타임 설정을 만든다. 이 프로젝트는 팀 아키텍처와 에이전트가 쓸 스킬을 만든다. 런타임 결정성이 필요하면 Archon, 팀 아키텍처가 필요하면 이쪽, 둘 다 쓸 수도 있다.
+
+## Star History
+
+<a href="https://www.star-history.com/#IISweetHeartII/agent-foundry&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+ </picture>
+</a>
+
 ## 워크플로우
 
 ```

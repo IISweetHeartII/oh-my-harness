@@ -377,6 +377,41 @@ def check_change_notice(errors: list[str]) -> None:
             )
 
 
+def check_readme_parity(errors: list[str]) -> None:
+    """Keep the translated READMEs structurally in step with the English one.
+
+    Upstream dropped its Japanese README with the reason "maintenance cost
+    versus low utility", and that reason was sound: a translation nobody can
+    tell has gone stale is worse than no translation. This repository keeps
+    three languages, so it owes a way to notice the drift. Comparing the
+    version badge and the set of section headings is coarse, but it is
+    countable, and a countable check is one that stays switched on.
+    """
+    base = ROOT / "README.md"
+    if not base.is_file():
+        return
+
+    def shape(path: Path) -> tuple[str, int]:
+        text = path.read_text(encoding="utf-8")
+        badge = re.search(r"badge/Version-([0-9.]+)-", text)
+        headings = re.findall(r"^## ", text, re.MULTILINE)
+        return (badge.group(1) if badge else "", len(headings))
+
+    want_version, want_sections = shape(base)
+    for path in sorted(ROOT.glob("README_*.md")):
+        got_version, got_sections = shape(path)
+        if got_version != want_version:
+            errors.append(
+                f"{rel(path)} version badge {got_version!r} does not match "
+                f"README.md {want_version!r}"
+            )
+        if got_sections != want_sections:
+            errors.append(
+                f"{rel(path)} has {got_sections} top-level sections but README.md "
+                f"has {want_sections} — the translation has drifted"
+            )
+
+
 def check_size_budget(errors: list[str]) -> None:
     for skill_md in sorted((ROOT / "skills").glob("*/SKILL.md")):
         n = len(skill_md.read_text(encoding="utf-8").splitlines())
@@ -391,6 +426,7 @@ def check_size_budget(errors: list[str]) -> None:
 CHECKS = {
     "required-files": check_required_files,
     "size-budget": check_size_budget,
+    "readme-parity": check_readme_parity,
     "plugin-manifests": check_plugin_manifests,
     "skill-frontmatter": check_skill_frontmatter,
     "link-existence": check_link_existence,

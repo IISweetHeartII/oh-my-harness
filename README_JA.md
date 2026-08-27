@@ -52,6 +52,29 @@ v2 は現行の Claude Code マルチエージェントランタイム向けに�
 - **検証** — トリガー評価、ドライラン、スキルあり／なしの A/B テスト（ワークフローとして実行も可能）
 - **進化** — `/harness:evolve` が利用フィードバックを測定可能な次世代の改善へ変換
 
+## カテゴリ — このプロジェクトの位置
+
+本プロジェクトは Claude Code エコシステムの **L3 メタファクトリ**層にあります — ハーネス«である»のではなく、ハーネスを«生成する»層です。L3 の中では **チームアーキテクチャ工場**のサブ層を占めます。
+
+| 層 | 役割 | 共存する隣接プロジェクト |
+|----|------|------------------------|
+| **L3 — メタファクトリ / チームアーキテクチャ工場**（本プロジェクト） | ドメイン一文 → エージェントチーム + スキル。事前定義の 6 パターン経由 | — |
+| L3 — メタファクトリ / ランタイム設定工場 | 決定的で再現可能なランタイム設定 | [coleam00/Archon](https://github.com/coleam00/Archon) |
+| L3 — メタファクトリ / Codex ランタイムポート | 同じ概念、Codex ランタイム | [SaehwanPark/meta-harness](https://github.com/SaehwanPark/meta-harness) |
+| L2 — ハーネス横断ワークフロー | 複数ハーネスにまたがるスキル・ルール・フックの標準化 | [affaan-m/ECC](https://github.com/affaan-m/everything-claude-code) |
+
+> Archon は決定的なランタイム設定を生成します。本プロジェクトはチームアーキテクチャと、エージェントが使うスキルを生成します。ランタイムの決定性が要るなら Archon、チーム設計が要るならこちら、両方を組み合わせることもできます。
+
+## Star History
+
+<a href="https://www.star-history.com/#IISweetHeartII/agent-foundry&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+ </picture>
+</a>
+
 ## ワークフロー
 
 ```

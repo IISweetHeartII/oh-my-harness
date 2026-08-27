@@ -18,7 +18,7 @@
 
 - **`docs/ATTRIBUTION.md`** — 업스트림 열린 PR 24건 전수 판정표(ADOPTED 10 / SUPERSEDED 2 / REJECTED 12)와 기여자 크레딧
 - **`NOTICE`** — Apache-2.0 §4 귀속 고지, PR #51/#56 계보
-- **`README_JA.md`** — 업스트림 PR #56 이 유실한 일본어 README 를 v2 기준으로 재작성
+- **`README_JA.md`** — 일본어 README 를 v2 기준으로 재작성. ⚠️ 업스트림 v2 는 **의도적으로** 이걸 뺐다("유지보수 부담 대비 효용 저조, EN/KO 2종 유지"). 그 판단이 옳았기에 되돌리는 대신 **드리프트를 탐지 가능하게** 만들었다 — `readme-parity` 검사 참조. 근거는 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) 「One upstream decision deliberately reversed」
 - **Phase 1-7 출력 locale 결정** — 생성물 본문 언어가 사용자 locale 을 따르도록. `_workspace/00_locale.md` 기록 (upstream PR #38, [@mythkiven](https://github.com/mythkiven))
 - **Phase 6-7 사용자 핸드오프** — 구축 직후 트리거 예문·skill name·산출물 경로 안내 (upstream PR #6, [@gd452](https://github.com/gd452))
 - **`references/self-evolution-loop.md` + Phase 7 포인터** — 증거 주도 자율 진화 루프(옵트인). 자격 게이트 A/B/C, 실패 시그니처 `(c, q, m)`, held-in/held-out 비퇴행 수용 규칙 (upstream PR #45, [@epoko77-ai](https://github.com/epoko77-ai))
@@ -27,10 +27,12 @@
 - **description 중국어 트리거** — 트리거 매칭 확장 (upstream PR #23, [@hyhmrright](https://github.com/hyhmrright))
 - **CI 검사 4종 신설** — `link-existence` · `dead-api` · `version-consistency` · `change-notice`
 - **`size-budget` 검사** — SKILL.md 520줄 / reference 650줄 예산 (upstream PR #41, [@mythkiven](https://github.com/mythkiven))
-- **`tests/guardrail/`** — 검사기 8종 각각을 일부러 깨뜨려 «실제로 FAIL 하는지» 증명하는 스위트. CI 별도 잡으로 상시 실행
+- **`readme-parity` 검사** — 모든 `README_*.md` 가 `README.md` 와 같은 버전 뱃지·같은 최상위 섹션 수를 갖는지. 번역본의 드리프트를 «빌드 실패»로 만든다
+- **`tests/guardrail/`** — 검사기 9종 각각을 일부러 깨뜨려 «실제로 FAIL 하는지» 증명하는 스위트. CI 별도 잡으로 상시 실행
 
 ### Changed
 
+- **한국어·일본어 README 에 누락 섹션 2개 보강** — `Category` 와 `Star History`. 한국어판은 업스트림 시절부터 빠져 있었고 `readme-parity` 신설로 발견됐다
 - **`agent-foundry` 로 리브랜드** — 플러그인·마켓플레이스 이름, 저자, 저장소 URL. **스킬 이름 `harness`·`evolve` 는 유지** (트리거 문구와 v1 마이그레이션 경로 보존)
 - **깨진 로컬 링크를 경고에서 에러로 승격** — 초록불 옆의 경고는 «괜찮음»으로 읽힌다. 실재하지 않는 문서 4개가 업스트림에서 몇 달간 참조된 원인
 - **Phase 0 / Phase 3-0 중복 검토가 유저 스코프까지 감사** — `~/.claude/agents/` 를 함께 읽는다. 프로젝트 스코프가 유저 스코프를 덮으므로, 같은 이름을 만들면 사용자의 전역 에이전트가 경고 없이 사라진다
