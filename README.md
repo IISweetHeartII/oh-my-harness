@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/Patterns-6+Quality-orange.svg" alt="Patterns">
 </p>
 
-# agent-foundry — The Team-Architecture Factory for Claude Code
+# oh-my-harness — The Team-Architecture Factory for Claude Code
 
 **English** | [한국어](README_KO.md) | [日本語](README_JA.md)
 
-> **agent-foundry is a team-architecture factory for Claude Code.** One sentence — **"build a harness for this project"** · **"하네스 구성해줘"** — and the plugin turns your domain description into an agent team and the skills they use.
+> **oh-my-harness is a team-architecture factory for Claude Code.** One sentence — **"build a harness for this project"** · **"하네스 구성해줘"** — and the plugin turns your domain description into an agent team and the skills they use.
 
 > ### Attribution
-> `agent-foundry` is a **maintained derivative** of [revfactory/harness](https://github.com/revfactory/harness)
+> `oh-my-harness` is a **maintained derivative** of [revfactory/harness](https://github.com/revfactory/harness)
 > by [robin (Minho Hwang)](https://github.com/revfactory), licensed under Apache-2.0.
 >
 > Upstream authored an excellent v2 rebuild but it has sat unmerged since 2026-07-20
@@ -65,11 +65,11 @@ Harness lives at the **L3 Meta-Factory** layer of the Claude Code ecosystem — 
 
 ## Star History
 
-<a href="https://www.star-history.com/#IISweetHeartII/agent-foundry&Date">
+<a href="https://www.star-history.com/#IISweetHeartII/oh-my-harness&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date" />
  </picture>
 </a>
 
@@ -91,8 +91,8 @@ Phase 7: Maintenance — evolution via /harness:evolve
 ### Via marketplace
 
 ```shell
-/plugin marketplace add IISweetHeartII/agent-foundry
-/plugin install agent-foundry@agent-foundry-marketplace
+/plugin marketplace add IISweetHeartII/oh-my-harness
+/plugin install oh-my-harness@oh-my-harness-marketplace
 ```
 
 ### As global skills

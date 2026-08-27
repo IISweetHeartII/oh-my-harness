@@ -9,14 +9,14 @@
   <img src="https://img.shields.io/badge/패턴-6+품질패턴-orange.svg" alt="Patterns">
 </p>
 
-# agent-foundry — Claude Code를 위한 팀 아키텍처 팩토리
+# oh-my-harness — Claude Code를 위한 팀 아키텍처 팩토리
 
 [English](README.md) | **한국어** | [日本語](README_JA.md)
 
-> **agent-foundry는 Claude Code용 팀 아키텍처 팩토리입니다.** **"하네스 구성해줘"** 한 문장으로, 플러그인이 도메인 설명을 에이전트 팀과 그들이 쓸 스킬로 변환합니다.
+> **oh-my-harness는 Claude Code용 팀 아키텍처 팩토리입니다.** **"하네스 구성해줘"** 한 문장으로, 플러그인이 도메인 설명을 에이전트 팀과 그들이 쓸 스킬로 변환합니다.
 
 > ### 출처 및 귀속
-> `agent-foundry` 는 [robin (Minho Hwang)](https://github.com/revfactory) 님의
+> `oh-my-harness` 는 [robin (Minho Hwang)](https://github.com/revfactory) 님의
 > [revfactory/harness](https://github.com/revfactory/harness) 를 Apache-2.0 하에 이어받아
 > **유지보수하는 파생본**입니다.
 >
@@ -66,11 +66,11 @@ v2는 현행 Claude Code 멀티에이전트 런타임에 맞춰 바닥부터 재
 
 ## Star History
 
-<a href="https://www.star-history.com/#IISweetHeartII/agent-foundry&Date">
+<a href="https://www.star-history.com/#IISweetHeartII/oh-my-harness&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date" />
  </picture>
 </a>
 
@@ -92,8 +92,8 @@ Phase 7: 운영/유지보수 — 진화는 /harness:evolve
 ### 마켓플레이스 설치
 
 ```shell
-/plugin marketplace add IISweetHeartII/agent-foundry
-/plugin install agent-foundry@agent-foundry-marketplace
+/plugin marketplace add IISweetHeartII/oh-my-harness
+/plugin install oh-my-harness@oh-my-harness-marketplace
 ```
 
 ### 글로벌 스킬로 직접 설치

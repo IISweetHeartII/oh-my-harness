@@ -17,16 +17,16 @@
 ## Step 1 — 마켓플레이스 추가 (30초)
 
 ```
-/plugin marketplace add IISweetHeartII/agent-foundry
+/plugin marketplace add IISweetHeartII/oh-my-harness
 ```
 
 ## Step 2 — 플러그인 설치 (30초)
 
 ```
-/plugin install agent-foundry@agent-foundry-marketplace
+/plugin install oh-my-harness@oh-my-harness-marketplace
 ```
 
-**실패 FAQ — 설치가 안 보임:** `/plugin list`로 확인. 없으면 Step 1부터 재실행, 있는데 비활성이면 `/plugin enable agent-foundry@agent-foundry-marketplace`.
+**실패 FAQ — 설치가 안 보임:** `/plugin list`로 확인. 없으면 Step 1부터 재실행, 있는데 비활성이면 `/plugin enable oh-my-harness@oh-my-harness-marketplace`.
 
 ## Step 3 — 한 문장으로 하네스 생성 (2분)
 

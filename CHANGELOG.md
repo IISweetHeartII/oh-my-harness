@@ -5,7 +5,7 @@
 
 이 프로젝트는 [Semantic Versioning](https://semver.org/)을 따릅니다.
 
-`agent-foundry` 는 [revfactory/harness](https://github.com/revfactory/harness) 의 파생본입니다.
+`oh-my-harness` 는 [revfactory/harness](https://github.com/revfactory/harness) 의 파생본입니다.
 **2.1.0 이하 항목은 업스트림의 기록**이며, 2.2.0 부터가 이 저장소의 변경입니다.
 채택·기각한 업스트림 PR 의 전수 판정은 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) 에 있습니다.
 
@@ -33,7 +33,7 @@
 ### Changed
 
 - **한국어·일본어 README 에 누락 섹션 2개 보강** — `Category` 와 `Star History`. 한국어판은 업스트림 시절부터 빠져 있었고 `readme-parity` 신설로 발견됐다
-- **`agent-foundry` 로 리브랜드** — 플러그인·마켓플레이스 이름, 저자, 저장소 URL. **스킬 이름 `harness`·`evolve` 는 유지** (트리거 문구와 v1 마이그레이션 경로 보존)
+- **`oh-my-harness` 로 리브랜드** — 플러그인·마켓플레이스 이름, 저자, 저장소 URL. **스킬 이름 `harness`·`evolve` 는 유지** (트리거 문구와 v1 마이그레이션 경로 보존)
 - **깨진 로컬 링크를 경고에서 에러로 승격** — 초록불 옆의 경고는 «괜찮음»으로 읽힌다. 실재하지 않는 문서 4개가 업스트림에서 몇 달간 참조된 원인
 - **Phase 0 / Phase 3-0 중복 검토가 유저 스코프까지 감사** — `~/.claude/agents/` 를 함께 읽는다. 프로젝트 스코프가 유저 스코프를 덮으므로, 같은 이름을 만들면 사용자의 전역 에이전트가 경고 없이 사라진다
 - **워크플로우 통합** — `harness-validation.yml` 을 `validation.yml` 로 합침

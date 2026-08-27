@@ -10,14 +10,14 @@
   <img src="https://img.shields.io/badge/パターン-6+品質-orange.svg" alt="Patterns">
 </p>
 
-# agent-foundry — Claude Code のためのチームアーキテクチャ工場
+# oh-my-harness — Claude Code のためのチームアーキテクチャ工場
 
 [English](README.md) | [한국어](README_KO.md) | **日本語**
 
-> **agent-foundry は Claude Code 用のチームアーキテクチャ工場です。** 「このプロジェクトのハーネスを構成して」という一文で、プラグインがドメインの説明をエージェントチームと、そのチームが使うスキルへ変換します。
+> **oh-my-harness は Claude Code 用のチームアーキテクチャ工場です。** 「このプロジェクトのハーネスを構成して」という一文で、プラグインがドメインの説明をエージェントチームと、そのチームが使うスキルへ変換します。
 
 > ### 帰属表示
-> `agent-foundry` は [robin (Minho Hwang)](https://github.com/revfactory) 氏による
+> `oh-my-harness` は [robin (Minho Hwang)](https://github.com/revfactory) 氏による
 > [revfactory/harness](https://github.com/revfactory/harness) の
 > **メンテナンス派生版**であり、Apache-2.0 のもとで公開されています。
 >
@@ -67,11 +67,11 @@ v2 は現行の Claude Code マルチエージェントランタイム向けに�
 
 ## Star History
 
-<a href="https://www.star-history.com/#IISweetHeartII/agent-foundry&Date">
+<a href="https://www.star-history.com/#IISweetHeartII/oh-my-harness&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/oh-my-harness&type=Date" />
  </picture>
 </a>
 
@@ -93,8 +93,8 @@ Phase 7: 保守 — /harness:evolve による進化
 ### マーケットプレイス経由
 
 ```shell
-/plugin marketplace add IISweetHeartII/agent-foundry
-/plugin install agent-foundry@agent-foundry-marketplace
+/plugin marketplace add IISweetHeartII/oh-my-harness
+/plugin install oh-my-harness@oh-my-harness-marketplace
 ```
 
 ### グローバルスキルとして

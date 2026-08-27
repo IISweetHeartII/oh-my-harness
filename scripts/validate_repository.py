@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the agent-foundry repository's publishable plugin and skill assets.
+"""Validate the oh-my-harness repository's publishable plugin and skill assets.
 
 Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin).
 Upstream shipped the required-files / manifest / skill-reference / link-warning

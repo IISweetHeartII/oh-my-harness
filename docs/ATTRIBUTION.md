@@ -1,10 +1,10 @@
 <!-- Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin): this
-     file is new to agent-foundry, but it documents the disposition of upstream
+     file is new to oh-my-harness, but it documents the disposition of upstream
      work carried into this derivative. -->
 
 # Attribution and upstream pull-request disposition
 
-`agent-foundry` is a derivative of [revfactory/harness](https://github.com/revfactory/harness)
+`oh-my-harness` is a derivative of [revfactory/harness](https://github.com/revfactory/harness)
 by [robin (Minho Hwang)](https://github.com/revfactory), Apache-2.0, Copyright 2025 robin.
 
 This page records where the content came from, so credit is traceable rather than implied.

@@ -1,12 +1,12 @@
 {
-  "name": "agent-foundry-marketplace",
+  "name": "oh-my-harness-marketplace",
   "owner": {
     "name": "IISweetHeartII",
     "url": "https://github.com/IISweetHeartII"
   },
   "plugins": [
     {
-      "name": "agent-foundry",
+      "name": "oh-my-harness",
       "source": "./",
       "description": "에이전트 팀 & 스킬 아키텍트. 도메인/프로젝트에 맞는 하네스를 구성하고, 전문 에이전트를 정의하며, 에이전트가 사용할 스킬을 생성하는 메타 스킬. 워크플로우 오케스트레이션 · 퍼시스턴트 에이전트 협업 · 서브에이전트 위임 3중 실행 모드 지원. revfactory/harness 의 유지보수 파생본. Agent team 与 skill 架构师：为领域/项目配置 harness，定义专家 agent 并生成它们所用 skill 的元 skill。",
       "version": "2.2.0"
