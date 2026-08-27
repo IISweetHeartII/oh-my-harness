@@ -577,6 +577,34 @@ def check_lint_rule_docs(errors: list[str]) -> None:
     if not listed:
         errors.append("could not read the rule list from harness_lint.py --list")
         return
+    # The READMEs describe the same rules to the people deciding whether to
+    # install this. They said seven rules and four sections while nine and five
+    # were implemented, and this gate did not look at them — it checked the two
+    # documents it was written against and reported clean.
+    required_sections = int(re.search(
+        r"^REQUIRED_AGENT_SECTION_COUNT\s*=\s*(\d+)",
+        (ROOT / "scripts" / "harness_lint.py").read_text(encoding="utf-8"), re.M).group(1))
+    for readme in sorted(ROOT.glob("README*.md")):
+        text = readme.read_text(encoding="utf-8")
+        missing = [r for r in listed if f"`{r}`" not in text]
+        if missing:
+            errors.append(f"{rel(readme)} never names these implemented rules: "
+                          f"{', '.join(missing)}")
+        row = next((l for l in text.splitlines() if "`agent-sections`" in l), None)
+        if row is None:
+            errors.append(f"{rel(readme)} has no `agent-sections` row to check")
+        else:
+            # the row states how many contract sections are required; whatever
+            # language it is written in, the number has to be the real one
+            # `\b` does not fire between a digit and a CJK character, so `5개`
+            # read as "no number at all". A check that is wrong in one language
+            # is a false positive waiting to switch the check off.
+            numbers = {int(n) for n in re.findall(r"(?<!\d)(\d+)(?!\d)", row)}
+            if numbers != {required_sections}:
+                errors.append(
+                    f"{rel(readme)}'s agent-sections row states {sorted(numbers) or 'no'} "
+                    f"section(s); harness_lint requires {required_sections}")
+
     for doc in ("skills/harness/SKILL.md", "commands/harness-lint.md"):
         text = (ROOT / doc).read_text(encoding="utf-8")
         missing = [r for r in listed if f"`{r}`" not in text]

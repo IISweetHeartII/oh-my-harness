@@ -3,7 +3,7 @@
      v2 content. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.8.2-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.8.3-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/実行モード-3種-teal.svg" alt="3 Execution Modes">
@@ -175,17 +175,19 @@ your-project/
 /oh-my-harness:harness-lint          # または: python3 scripts/harness_lint.py .
 ```
 
-生成された `.claude/agents/` と `.claude/skills/` に対する決定的なルール 7 種:
+生成された `.claude/agents/` と `.claude/skills/` に対する決定的なルール 9 種:
 
 | ルール | 何を捕まえるか |
 |---|---|
+| `agent-naming` | 予約された一般的な役割名、または宣言しておいて守らなかった `agentNamespace` |
+| `agent-duplicates` | 二つのファイルが同じ `name` を宣言 — 片方は決して呼ばれない |
 | `agent-frontmatter` | `name`・`description` の欠落。ファイル名の一致は要求しない — 解決は `name` による |
-| `agent-sections` | 契約セクションが 4 つ未満 — **言語を問わない**（生成物はユーザの locale に従うため） |
+| `agent-sections` | 契約セクションが 5 つ未満 — **言語を問わない**（生成物はユーザの locale に従うため） |
 | `dead-api` | 削除済み API を«指示»として記述（履歴としての言及は通過） |
 | `user-scope-shadowing` | 生成エージェントがグローバルな `~/.claude/agents/` を黙って覆う |
 | `skill-frontmatter` | スキル名とディレクトリの不一致、壊れた `references/` パス |
 | `orphan-agents` | **誰も呼ばないエージェント**、および定義のないエージェント呼び出し |
-| `model-tiering` | 3 つ以上が全て **`opus`** 固定 — v1 の一括指定の再来。同一ティア自体は欠陥ではない |
+| `model-tiering` | 3 つ以上が全て **`opus`** 固定 — v1 の一括指定の再来。同一ティア自体は欠陥ではなく、`.claude/harness.json` の `uniformTierRationale` に理由を残せば免除される |
 
 文体や品質を採点するものは一つもありません。議論する検査はオフにされ、オフになった検査は
 カバレッジのように«見える»ぶん、無いより悪いからです。
@@ -195,7 +197,7 @@ your-project/
   <img src="./docs/images/05-guardrails.png" alt="検査器は誰が検査するのか" width="820">
 </p>
 
-7 種それぞれも証明済みです — ガードレールが各ルールを故意に破り、リンタが気づくか確認します。
+9 種それぞれも証明済みです — ガードレールが各ルールを故意に破り、リンタが気づくか確認します。
 最初のハーネスを作る前に [docs/pilot-protocol.md](./docs/pilot-protocol.md) を読んでください —
 着手前に満たすべき条件 3 つ、判定基準 5 つ、そして「一つでも落ちたら生成物を削除する」という規則。
 

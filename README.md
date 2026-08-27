@@ -2,7 +2,7 @@
      attribution block added, install and star-history targets retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.8.2-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.8.3-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/Execution_Modes-3-teal.svg" alt="3 Execution Modes">
@@ -177,13 +177,15 @@ Seven deterministic rules over the generated `.claude/agents/` and `.claude/skil
 
 | Rule | What it catches |
 |---|---|
+| `agent-naming` | A reserved generic role name, or an `agentNamespace` the harness declared and then broke |
+| `agent-duplicates` | Two files declaring the same `name` — one of them is never reachable |
 | `agent-frontmatter` | A missing `name` or `description`. Filename need not match — resolution is by `name` |
-| `agent-sections` | Fewer than four contract sections — **in any language**, since output follows the user's locale |
+| `agent-sections` | Fewer than 5 contract sections — **in any language**, since output follows the user's locale |
 | `dead-api` | A removed API named as an instruction (naming it as history passes) |
 | `user-scope-shadowing` | A generated agent silently replacing one of your global `~/.claude/agents/` |
 | `skill-frontmatter` | Skill name/directory mismatch, broken `references/` paths |
 | `orphan-agents` | **Agents nothing calls**, and calls to agents that do not exist |
-| `model-tiering` | Three or more agents all pinned to `opus` — the v1 blanket pin. Uniformity by itself is fine |
+| `model-tiering` | Three or more agents all pinned to `opus` — the v1 blanket pin. Uniformity by itself is fine; record why in `.claude/harness.json` under `uniformTierRationale` and it is exempt |
 
 Nothing here scores style or quality. A check that argues gets switched off, and a
 switched-off check is worse than no check because it still looks like coverage.
@@ -193,7 +195,7 @@ switched-off check is worse than no check because it still looks like coverage.
   <img src="./docs/images/05-guardrails.png" alt="Who checks the checker" width="820">
 </p>
 
-Each of the seven is itself proven: the guardrail suite breaks every rule on purpose and
+Each of the nine is itself proven: the guardrail suite breaks every rule on purpose and
 requires the linter to notice. Before generating a first harness, [docs/pilot-protocol.md](./docs/pilot-protocol.md) sets the
 bar: three conditions to meet before you start, five criteria to judge it by, and the rule that a
 pilot which fails any of them gets deleted rather than kept.

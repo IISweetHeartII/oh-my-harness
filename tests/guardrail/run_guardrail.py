@@ -32,6 +32,13 @@ HARNESS_LINT = ROOT / "scripts" / "harness_lint.py"
 CLEAN_FIXTURE = ROOT / "tests" / "fixtures" / "clean-harness"
 CASES_DIR = Path(__file__).resolve().parent / "cases"
 
+# How many contract sections harness-lint requires. Read from the linter so this
+# suite cannot drift from it — a fixture with fewer headings than the threshold
+# fires for the wrong reason and proves nothing.
+REQUIRED_SECTIONS = int(re.search(
+    r"^REQUIRED_AGENT_SECTION_COUNT\s*=\s*(\d+)",
+    HARNESS_LINT.read_text(encoding="utf-8"), re.M).group(1))
+
 
 # --------------------------------------------------------------------------
 # breakages — each takes the temp repo root and makes exactly one thing wrong
@@ -173,6 +180,22 @@ def break_ci_preflight_comment_only(repo: Path) -> str:
     return "CI running nothing while only a comment still names preflight.sh"
 
 
+def break_readme_section_count(repo: Path) -> str:
+    """A README that states the old contract size.
+
+    The gate checked the two documents it was written against and reported
+    clean while all three READMEs told readers four sections and seven rules.
+    """
+    p = repo / "README.md"
+    text = p.read_text(encoding="utf-8")
+    new, n = re.subn(r"(`agent-sections`.*?Fewer than )5( contract sections)",
+                     r"\g<1>4\g<2>", text, count=1)
+    if not n:
+        raise AssertionError("no agent-sections row stating 5 sections in README.md")
+    p.write_text(new, encoding="utf-8")
+    return "a README telling readers the old contract size"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -201,6 +224,7 @@ CASES = {
     "version-consistency": break_version_consistency,
     "change-notice": break_change_notice,
     "lint-rule-docs": break_lint_rule_docs,
+    "readme-rule-docs": break_readme_section_count,
     "ci-runs-preflight": break_ci_runs_preflight,
     "ci-preflight-comment-only": break_ci_preflight_comment_only,
 }
@@ -293,8 +317,12 @@ def hl_agent_sections_tilde(h: Path) -> str:
     """
     p = h / ".claude" / "agents" / "billing-analyst.md"
     body = re.sub(r"^##\s+.*$", "(was a section)", p.read_text(), flags=re.M)
-    p.write_text(body + "\n\n~~~text\n## one\n## two\n## three\n## four\n~~~\n")
-    return "four ## headings inside a ~~~ fence and no real sections"
+    # As many fake headings as the contract requires. With fewer, a checker that
+    # does not know tildes still counts too few and fires — so the case would
+    # pass for the wrong reason and prove nothing about tilde handling.
+    fence = "\n".join(f"## fake {i}" for i in range(1, REQUIRED_SECTIONS + 1))
+    p.write_text(f"{body}\n\n~~~text\n{fence}\n~~~\n")
+    return (f"{REQUIRED_SECTIONS} ## headings inside a ~~~ fence and no real sections")
 
 
 def hl_dead_api_multiline(h: Path) -> str:
@@ -693,7 +721,8 @@ def main() -> int:
     # dead-api-yaml exercises the dead-api check through a non-Markdown file,
     # so it is an extra case rather than a check of its own.
     ALIASES = {"dead-api-yaml": "dead-api",
-               "ci-preflight-comment-only": "ci-runs-preflight"}
+               "ci-preflight-comment-only": "ci-runs-preflight",
+               "readme-rule-docs": "lint-rule-docs"}
     uncovered = sorted(set(known) - set(CASES) - set(ALIASES.values()))
     if uncovered:
         print(f"FAIL: checks with no guardrail case: {', '.join(uncovered)}", file=sys.stderr)

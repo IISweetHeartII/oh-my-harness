@@ -2,7 +2,7 @@
      attribution block added, install target retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.8.2-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.8.3-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/실행모드-3종-teal.svg" alt="3 Execution Modes">
@@ -173,17 +173,19 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 /oh-my-harness:harness-lint          # 또는: python3 scripts/harness_lint.py .
 ```
 
-생성된 `.claude/agents/` 와 `.claude/skills/` 에 결정적 규칙 7종:
+생성된 `.claude/agents/`·`.claude/skills/`·`.claude/workflows/` 에 결정적 규칙 9종:
 
 | 규칙 | 무엇을 잡나 |
 |---|---|
+| `agent-naming` | 예약된 일반 역할명, 또는 선언해 놓고 지키지 않은 `agentNamespace` |
+| `agent-duplicates` | 두 파일이 같은 `name` 을 선언 — 하나는 절대 안 불린다 |
 | `agent-frontmatter` | `name`·`description` 누락. 파일명 일치는 요구하지 않는다 — 해석은 `name` 기준 |
-| `agent-sections` | 계약 섹션 4개 미만 — **언어 무관**(생성물이 사용자 locale 을 따르므로) |
+| `agent-sections` | 계약 섹션 5 개 미만 — **언어 무관**(생성물이 사용자 locale 을 따르므로) |
 | `dead-api` | 제거된 API 를 «지시»로 씀 (이력으로 언급한 것은 통과) |
 | `user-scope-shadowing` | 생성된 에이전트가 당신의 전역 `~/.claude/agents/` 를 조용히 덮음 |
 | `skill-frontmatter` | 스킬 이름·디렉터리 불일치, 깨진 `references/` 경로 |
 | `orphan-agents` | **아무도 안 부르는 에이전트**, 그리고 정의 없는 에이전트 호출 |
-| `model-tiering` | 3개 이상이 전부 **`opus`** 고정 — v1 일괄 지정의 회귀. 같은 티어 자체는 결함이 아니다 |
+| `model-tiering` | 3개 이상이 전부 **`opus`** 고정 — v1 일괄 지정의 회귀. 같은 티어 자체는 결함이 아니며, `.claude/harness.json` 의 `uniformTierRationale` 에 이유를 남기면 면제된다 |
 
 문체나 품질을 점수 매기는 것은 하나도 없다. 논쟁하는 검사는 꺼지고, 꺼진 검사는
 커버리지처럼 «보이기» 때문에 없는 것보다 나쁘다.
@@ -193,7 +195,7 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
   <img src="./docs/images/05-guardrails.png" alt="검사기는 누가 검사하나" width="820">
 </p>
 
-7종 각각도 증명돼 있다 — 가드레일이 매 규칙을 일부러 깨뜨리고 린터가 잡는지 확인한다.
+9종 각각도 증명돼 있다 — 가드레일이 매 규칙을 일부러 깨뜨리고 린터가 잡는지 확인한다.
 첫 하네스를 만들기 전에 [docs/pilot-protocol.md](./docs/pilot-protocol.md) 를 읽어라 — 착수 전
 충족해야 할 조건 3개, 판정 기준 5개, 그리고 «하나라도 실패하면 생성물을 지운다» 는 규칙.
 
