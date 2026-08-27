@@ -1,0 +1,35 @@
+name: Question
+description: Ask a how-to or clarification question about Harness
+title: "[question] "
+labels: ["question", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions are welcome. If your question is open-ended or invites discussion, [GitHub Discussions](https://github.com/revfactory/harness/discussions) is usually a better venue.
+
+        We try to triage questions within 48h.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Commands run, docs read, related issues you've already found.
+    validations:
+      required: false
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: Related docs / links (optional)
+      description: Paste links to sections of the README, docs, or issues you've already read.
+    validations:
+      required: false

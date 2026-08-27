@@ -1,0 +1,62 @@
+name: Feature request
+description: Propose a new capability or enhancement for Harness
+title: "[feat] "
+labels: ["enhancement", "needs-discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Features take a bit of back-and-forth — please help us with the "why" before the "what".
+
+        For anything RFC-sized (new pattern family, runtime support, breaking API), consider starting in [GitHub Discussions](https://github.com/revfactory/harness/discussions) first.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user or engineering pain point. Concrete scenario preferred.
+      placeholder: |
+        When I scaffold a team for ___, I end up manually ___ because ___.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Your idea for fixing it. Sketch API / CLI / workflow if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you think about, and why did you not pick them?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: related-pattern
+    attributes:
+      label: Related team-architecture pattern (if any)
+      description: Which of the 6 built-in patterns is this most relevant to?
+      options:
+        - "Not pattern-specific"
+        - "Pipeline"
+        - "Fan-out / Fan-in"
+        - "Expert Pool"
+        - "Producer–Reviewer"
+        - "Supervisor"
+        - "Hierarchical Delegation"
+        - "A new pattern (please describe below)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context (optional)
+      description: Links, prior art, screenshots, anything else.
+    validations:
+      required: false

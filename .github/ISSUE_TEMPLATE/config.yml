@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions — open-ended questions & RFCs
+    url: https://github.com/revfactory/harness/discussions
+    about: Prefer this for design discussions, ideas, "how should we think about X", and anything not yet actionable as an issue.
+  - name: Security disclosure (private)
+    url: mailto:robin.hwang@kakaocorp.com?subject=%5Bharness-security%5D
+    about: Report security issues privately. Acknowledgement within 7 days, patch target 30 days.
