@@ -2,7 +2,7 @@
      attribution block added, install target retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.5.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.6.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/실행모드-3종-teal.svg" alt="3 Execution Modes">
@@ -194,6 +194,9 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 </p>
 
 7종 각각도 증명돼 있다 — 가드레일이 매 규칙을 일부러 깨뜨리고 린터가 잡는지 확인한다.
+첫 하네스를 만들기 전에 [docs/pilot-protocol.md](./docs/pilot-protocol.md) 를 읽어라 — 착수 전
+충족해야 할 조건 3개, 판정 기준 5개, 그리고 «하나라도 실패하면 생성물을 지운다» 는 규칙.
+
 `/oh-my-harness:harness-audit` 는 기존 하네스를 읽기 전용으로 감사하면서 같은 린터를 돌린다.
 
 ## v1에서 마이그레이션

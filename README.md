@@ -2,7 +2,7 @@
      attribution block added, install and star-history targets retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.5.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.6.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/Execution_Modes-3-teal.svg" alt="3 Execution Modes">
@@ -194,7 +194,11 @@ switched-off check is worse than no check because it still looks like coverage.
 </p>
 
 Each of the seven is itself proven: the guardrail suite breaks every rule on purpose and
-requires the linter to notice. `/oh-my-harness:harness-audit` runs the same linter as part
+requires the linter to notice. Before generating a first harness, [docs/pilot-protocol.md](./docs/pilot-protocol.md) sets the
+bar: three conditions to meet before you start, five criteria to judge it by, and the rule that a
+pilot which fails any of them gets deleted rather than kept.
+
+`/oh-my-harness:harness-audit` runs the same linter as part
 of a read-only audit of an existing harness.
 
 ## Migrating from v1

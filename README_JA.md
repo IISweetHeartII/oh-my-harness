@@ -3,7 +3,7 @@
      v2 content. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.5.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.6.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/実行モード-3種-teal.svg" alt="3 Execution Modes">
@@ -196,6 +196,9 @@ your-project/
 </p>
 
 7 種それぞれも証明済みです — ガードレールが各ルールを故意に破り、リンタが気づくか確認します。
+最初のハーネスを作る前に [docs/pilot-protocol.md](./docs/pilot-protocol.md) を読んでください —
+着手前に満たすべき条件 3 つ、判定基準 5 つ、そして「一つでも落ちたら生成物を削除する」という規則。
+
 `/oh-my-harness:harness-audit` は既存ハーネスを読み取り専用で監査しつつ同じリンタを実行します。
 
 ## v1 からの移行
