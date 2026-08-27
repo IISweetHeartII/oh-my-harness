@@ -168,6 +168,19 @@ def call_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
+
+
+def strip_js_comments(text: str) -> str:
+    """Remove // and /* */ comments from a workflow script.
+
+    `//` inside a URL (`https://…`) is not a comment, so it is only treated as
+    one when it does not directly follow a colon.
+    """
+    text = BLOCK_COMMENT_RE.sub(" ", text)
+    return "\n".join(re.sub(r"(?<!:)//.*$", "", line) for line in text.splitlines())
+
+
 USER_AGENT_DIR = Path(os.path.expanduser("~/.claude/agents"))
 
 
@@ -396,9 +409,16 @@ def rule_orphan_agents(h: Harness, out: list[Finding]) -> None:
     referenced: set[str] = set()
     for p in h.orchestrators:
         text = p.read_text(encoding="utf-8")
-        for a, b in SUBAGENT_REF_RE.findall(text):
-            referenced.add(a or b)
+        if p not in h.workflows:
+            for a, b in SUBAGENT_REF_RE.findall(text):
+                referenced.add(a or b)
         if p in h.workflows:
+            # A commented-out call is not a call. Without this, an agent stays
+            # "referenced" by a line someone disabled months ago — measured, and
+            # it is the same substring-instead-of-structure mistake as the rest.
+            text = strip_js_comments(text)
+            for a, b in SUBAGENT_REF_RE.findall(text):
+                referenced.add(a or b)
             # Workflow scripts are code, so the prose fallbacks below do not
             # apply: a backtick is a template literal, not a mention, and `@name`
             # is a decorator or an email. Only the call syntax above counts here.

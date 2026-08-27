@@ -158,6 +158,21 @@ def break_ci_runs_preflight(repo: Path) -> str:
     return "CI calling one gate directly instead of scripts/preflight.sh"
 
 
+def break_ci_preflight_comment_only(repo: Path) -> str:
+    """CI stops running preflight while the header comment still names it.
+
+    The first version of this gate searched the whole file, so the comment
+    satisfied it and a workflow running `echo validation-skipped` passed.
+    """
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    if "        run: bash scripts/preflight.sh" not in text:
+        raise AssertionError("expected a run: step invoking preflight.sh")
+    wf.write_text(text.replace("        run: bash scripts/preflight.sh",
+                               "        run: echo validation-skipped", 1), encoding="utf-8")
+    return "CI running nothing while only a comment still names preflight.sh"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -187,6 +202,7 @@ CASES = {
     "change-notice": break_change_notice,
     "lint-rule-docs": break_lint_rule_docs,
     "ci-runs-preflight": break_ci_runs_preflight,
+    "ci-preflight-comment-only": break_ci_preflight_comment_only,
 }
 
 
@@ -321,6 +337,23 @@ def hl_orphan_workflow_template_literal(h: Path) -> str:
     return "an agent named only inside a template literal in a workflow"
 
 
+def hl_orphan_commented_call(h: Path) -> str:
+    """A commented-out call in a workflow is not a call.
+
+    Matching the raw text kept an agent "referenced" by a line someone disabled
+    months ago — found by fault injection, not by reading the code.
+    """
+    ghost = h / ".claude" / "agents" / "billing-ghost.md"
+    ghost.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                     .replace("billing-analyst", "billing-ghost"))
+    wf = h / ".claude" / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "nightly.ts").write_text(
+        "export const meta = { name: 'nightly', description: 'x' }\n"
+        "// agentType: 'billing-ghost'  <- disabled months ago\n", encoding="utf-8")
+    return "an agent kept alive only by a commented-out call"
+
+
 LINT_CASES = {
     "agent-frontmatter": hl_agent_frontmatter,
     "agent-naming": hl_agent_naming,
@@ -337,6 +370,7 @@ LINT_CASES = {
     "dead-api-multiline-call": hl_dead_api_multiline,
     "orphan-agents-workflow-ghost": hl_orphan_workflow_ghost,
     "orphan-agents-template-literal": hl_orphan_workflow_template_literal,
+    "orphan-agents-commented-call": hl_orphan_commented_call,
 }
 
 # case name -> the rule it actually exercises, for the cases that are extra
@@ -346,6 +380,7 @@ LINT_ALIASES = {
     "dead-api-multiline-call": "dead-api",
     "orphan-agents-workflow-ghost": "orphan-agents",
     "orphan-agents-template-literal": "orphan-agents",
+    "orphan-agents-commented-call": "orphan-agents",
 }
 
 
@@ -657,7 +692,8 @@ def main() -> int:
     ).stdout.split()
     # dead-api-yaml exercises the dead-api check through a non-Markdown file,
     # so it is an extra case rather than a check of its own.
-    ALIASES = {"dead-api-yaml": "dead-api"}
+    ALIASES = {"dead-api-yaml": "dead-api",
+               "ci-preflight-comment-only": "ci-runs-preflight"}
     uncovered = sorted(set(known) - set(CASES) - set(ALIASES.values()))
     if uncovered:
         print(f"FAIL: checks with no guardrail case: {', '.join(uncovered)}", file=sys.stderr)

@@ -502,6 +502,38 @@ def check_size_budget(errors: list[str]) -> None:
             errors.append(f"{rel(ref)} is {n} lines (budget {REFERENCE_MAX_LINES})")
 
 
+def _workflow_run_commands(text: str) -> list[str]:
+    """The shell commands a GitHub workflow actually executes.
+
+    Only `run:` step bodies, including block scalars. Reading the whole file as
+    one string counts the header comment — which is how a workflow that ran
+    `echo validation-skipped` passed a gate whose whole job was to check that it
+    runs preflight. A comment is not an execution step.
+    """
+    lines, out, i = text.splitlines(), [], 0
+    while i < len(lines):
+        m = re.match(r"^(\s*)-?\s*run:\s*(.*)$", lines[i])
+        if not m:
+            i += 1
+            continue
+        indent, rest = len(m.group(1)), m.group(2).strip()
+        if rest and rest[0] not in "|>":
+            out.append(rest)
+            i += 1
+            continue
+        # a block scalar: everything indented deeper than the `run:` key
+        i += 1
+        block = []
+        while i < len(lines):
+            line = lines[i]
+            if line.strip() and (len(line) - len(line.lstrip())) <= indent:
+                break
+            block.append(line)
+            i += 1
+        out.append("\n".join(block))
+    return out
+
+
 def check_ci_runs_preflight(errors: list[str]) -> None:
     """CI must run the same script a human runs, not its own copy of the list.
 
@@ -515,14 +547,18 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
     if not wf.is_file():
         errors.append(".github/workflows/validation.yml is missing")
         return
-    text = wf.read_text(encoding="utf-8")
-    if "scripts/preflight.sh" not in text:
-        errors.append("validation.yml never runs scripts/preflight.sh — "
-                      "CI and the local gate can now disagree")
-    for script in ("validate_repository.py", "run_guardrail.py"):
+    commands = _workflow_run_commands(wf.read_text(encoding="utf-8"))
+    if not commands:
+        errors.append("validation.yml has no run: steps at all — nothing is executed")
+        return
+    if not any("scripts/preflight.sh" in c for c in commands):
+        errors.append("no run: step in validation.yml executes scripts/preflight.sh — "
+                      "CI and the local gate can now disagree "
+                      f"(steps found: {'; '.join(c.splitlines()[0][:60] for c in commands)})")
+    for script in ("scripts/validate_repository.py", "tests/guardrail/run_guardrail.py"):
         # naming a gate directly is how the lists drift apart again
-        if f"python3 scripts/{script}" in text or f"python3 tests/guardrail/{script}" in text:
-            errors.append(f"validation.yml calls {script} directly instead of going "
+        if any(script in c for c in commands):
+            errors.append(f"a run: step calls {script} directly instead of going "
                           f"through scripts/preflight.sh")
 
 
