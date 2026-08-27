@@ -532,7 +532,13 @@ def main() -> int:
     selected = args.only or sorted(CHECKS)
     errors: list[str] = []
     for name in selected:
+        # 각 검사의 finding 에 그 검사의 이름을 붙인다. 이름이 없으면 「무엇이
+        # 잡았는지」를 밖에서 확인할 수 없고, 가드레일이 «규칙이 발화했다» 와
+        # «검사기가 어떤 이유로든 죽었다» 를 구분하지 못한다.
+        before = len(errors)
         CHECKS[name](errors)
+        for i in range(before, len(errors)):
+            errors[i] = f"[{name}] {errors[i]}"
 
     if errors:
         print("Repository validation failed:", file=sys.stderr)
