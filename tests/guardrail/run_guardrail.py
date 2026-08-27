@@ -158,6 +158,17 @@ def hl_agent_frontmatter(h: Path) -> str:
     return "agent frontmatter lost its description"
 
 
+def hl_agent_naming(h: Path) -> str:
+    """A bare generic role name — it silently replaces the user's global one."""
+    src = h / ".claude" / "agents" / "billing-analyst.md"
+    dst = h / ".claude" / "agents" / "analyst.md"
+    dst.write_text(src.read_text().replace("name: billing-analyst", "name: analyst", 1))
+    s = h / ".claude" / "skills" / "build" / "SKILL.md"
+    with s.open("a", encoding="utf-8") as fh:
+        fh.write('\nPhase 0: `Agent(subagent_type: "analyst")`\n')
+    return "generated a bare 'analyst', squatting a generic role name"
+
+
 def hl_agent_sections(h: Path) -> str:
     p = h / ".claude" / "agents" / "billing-analyst.md"
     text = p.read_text()
@@ -209,6 +220,7 @@ def hl_model_tiering(h: Path) -> str:
 
 LINT_CASES = {
     "agent-frontmatter": hl_agent_frontmatter,
+    "agent-naming": hl_agent_naming,
     "agent-sections": hl_agent_sections,
     "dead-api": hl_dead_api,
     "user-scope-shadowing": hl_user_scope_shadowing,
@@ -254,7 +266,14 @@ def make_uniform_sonnet(h: Path) -> str:
     return "every agent on sonnet because the work is the same shape"
 
 
+def make_namespaced(h: Path) -> str:
+    """A project that declares a namespace and honours it must pass."""
+    (h / ".claude" / "harness.json").write_text('{"agentNamespace": "billing"}\n')
+    return "a declared agentNamespace that every agent honours"
+
+
 VALID_VARIANTS = {
+    "declared-namespace": make_namespaced,
     "japanese-harness": make_japanese,
     "name-differs-from-filename": make_name_differs,
     "uniform-sonnet-tier": make_uniform_sonnet,

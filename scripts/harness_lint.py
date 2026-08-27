@@ -22,6 +22,7 @@ Exit 0 = clean. Exit 1 = findings. Exit 2 = nothing to lint.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -32,6 +33,19 @@ from pathlib import Path
 # built exactly as instructed in Japanese or Chinese. The contract is that four
 # sections exist, not what language names them — so count structure, not words.
 REQUIRED_AGENT_SECTION_COUNT = 4
+
+# Generic role words that a global agent very often already occupies. Generating
+# one of these unprefixed replaces the user's own agent inside this project, with
+# no warning — project scope simply wins. The user-scope rule catches it only on
+# the machine that has the collision; this one catches it everywhere.
+RESERVED_GENERIC_NAMES = {
+    "analyst", "architect", "builder", "critic", "debugger", "designer",
+    "developer", "executor", "explore", "explorer", "planner", "researcher",
+    "reviewer", "code-reviewer", "scientist", "tester", "qa", "qa-tester",
+    "security-reviewer", "test-engineer", "tracer", "verifier", "writer",
+    "document-specialist", "code-simplifier", "git-master",
+}
+HARNESS_MANIFEST = ".claude/harness.json"
 
 DEAD_API_TOKENS = ["TeamCreate", "TeamDelete", "team_name", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"]
 DEAD_API_NEGATIONS = [
@@ -111,6 +125,41 @@ def rule_agent_frontmatter(h: Harness, out: list[Finding]) -> None:
         # Deliberately NOT checking that name matches the filename. Resolution
         # is by `name`, so a divergence is legal; asserting otherwise would be a
         # check that enforces a convention while stating a falsehood about why.
+
+
+def rule_agent_naming(h: Harness, out: list[Finding]) -> None:
+    """Generated names must not squat on generic roles, and must obey the
+    project's namespace when one is declared.
+
+    Two levels, because the right strictness depends on the project:
+
+    - Always: reject a bare generic role name. `analyst` in a project shadows
+      the user's global `analyst` for everyone who has one.
+    - When `.claude/harness.json` declares `agentNamespace`: require it as a
+      prefix. That turns "please prefix your agents" from advice into a gate.
+    """
+    manifest = h.root / HARNESS_MANIFEST
+    namespace = None
+    if manifest.is_file():
+        try:
+            namespace = json.loads(manifest.read_text(encoding="utf-8")).get("agentNamespace")
+        except (json.JSONDecodeError, OSError):
+            out.append(Finding("agent-naming", HARNESS_MANIFEST, "is not readable JSON"))
+
+    for p in h.agents:
+        name = h.agent_name(p)
+        if name in RESERVED_GENERIC_NAMES:
+            out.append(Finding(
+                "agent-naming", h.rel(p),
+                f"{name!r} is a generic role name that global agents commonly use. "
+                f"Project scope wins silently, so this replaces the user's own "
+                f"{name!r} inside this project. Prefix it with the domain "
+                f"(e.g. billing-{name})"))
+        elif namespace and not name.startswith(f"{namespace}-"):
+            out.append(Finding(
+                "agent-naming", h.rel(p),
+                f"{name!r} does not start with the declared namespace "
+                f"{namespace!r} (see {HARNESS_MANIFEST})"))
 
 
 def rule_agent_sections(h: Harness, out: list[Finding]) -> None:
@@ -238,6 +287,7 @@ def rule_model_tiering(h: Harness, out: list[Finding]) -> None:
 
 RULES = {
     "agent-frontmatter": rule_agent_frontmatter,
+    "agent-naming": rule_agent_naming,
     "agent-sections": rule_agent_sections,
     "dead-api": rule_dead_api,
     "user-scope-shadowing": rule_user_scope_shadowing,
