@@ -1,16 +1,29 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.1.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.2.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/Execution_Modes-3-teal.svg" alt="3 Execution Modes">
   <img src="https://img.shields.io/badge/Patterns-6+Quality-orange.svg" alt="Patterns">
 </p>
 
-# Harness v2 — The Team-Architecture Factory for Claude Code
+# agent-foundry — The Team-Architecture Factory for Claude Code
 
-**English** | [한국어](README_KO.md)
+**English** | [한국어](README_KO.md) | [日本語](README_JA.md)
 
-> **Harness is a team-architecture factory for Claude Code.** One sentence — **"build a harness for this project"** · **"하네스 구성해줘"** — and the plugin turns your domain description into an agent team and the skills they use.
+> **agent-foundry is a team-architecture factory for Claude Code.** One sentence — **"build a harness for this project"** · **"하네스 구성해줘"** — and the plugin turns your domain description into an agent team and the skills they use.
+
+> ### Attribution
+> `agent-foundry` is a **maintained derivative** of [revfactory/harness](https://github.com/revfactory/harness)
+> by [robin (Minho Hwang)](https://github.com/revfactory), licensed under Apache-2.0.
+>
+> Upstream authored an excellent v2 rebuild but it has sat unmerged since 2026-07-20
+> (merge conflict, `maintainerCanModify=false`), leaving the published `main` on a v1 that
+> depends on the removed `TeamCreate` API. This repository ships that v2 work, plus the
+> community pull requests that were reviewed and accepted, plus CI that keeps the docs honest.
+>
+> See [NOTICE](./NOTICE) and [docs/ATTRIBUTION.md](./docs/ATTRIBUTION.md) for full credit.
+> The `harness` / `evolve` **skill names are kept unchanged** so the familiar trigger phrases
+> and the v1 migration path keep working.
 
 ## What's new in v2
 
@@ -49,11 +62,11 @@ Harness lives at the **L3 Meta-Factory** layer of the Claude Code ecosystem — 
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=revfactory%2Fharness&type=date&legend=top-left">
+<a href="https://www.star-history.com/#IISweetHeartII/agent-foundry&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=revfactory/harness&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=revfactory/harness&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=revfactory/harness&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=IISweetHeartII/agent-foundry&type=Date" />
  </picture>
 </a>
 
@@ -75,8 +88,8 @@ Phase 7: Maintenance — evolution via /harness:evolve
 ### Via marketplace
 
 ```shell
-/plugin marketplace add revfactory/harness
-/plugin install harness@harness-marketplace
+/plugin marketplace add IISweetHeartII/agent-foundry
+/plugin install agent-foundry@agent-foundry-marketplace
 ```
 
 ### As global skills
@@ -137,4 +150,8 @@ A controlled A/B on 15 software-engineering tasks measured the effect of structu
 
 ## License
 
-Apache 2.0
+Apache License 2.0 — see [LICENSE](./LICENSE).
+
+This is a derivative work of [revfactory/harness](https://github.com/revfactory/harness)
+(Copyright 2025 robin). Modified files carry a change notice; upstream copyright and
+attribution notices are retained per Apache-2.0 §4. See [NOTICE](./NOTICE).

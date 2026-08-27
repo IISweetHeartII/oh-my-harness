@@ -1,16 +1,30 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.1.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.2.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/실행모드-3종-teal.svg" alt="3 Execution Modes">
   <img src="https://img.shields.io/badge/패턴-6+품질패턴-orange.svg" alt="Patterns">
 </p>
 
-# Harness v2 — Claude Code를 위한 팀 아키텍처 팩토리
+# agent-foundry — Claude Code를 위한 팀 아키텍처 팩토리
 
-[English](README.md) | **한국어**
+[English](README.md) | **한국어** | [日本語](README_JA.md)
 
-> **Harness는 Claude Code용 팀 아키텍처 팩토리입니다.** **"하네스 구성해줘"** 한 문장으로, 플러그인이 도메인 설명을 에이전트 팀과 그들이 쓸 스킬로 변환합니다.
+> **agent-foundry는 Claude Code용 팀 아키텍처 팩토리입니다.** **"하네스 구성해줘"** 한 문장으로, 플러그인이 도메인 설명을 에이전트 팀과 그들이 쓸 스킬로 변환합니다.
+
+> ### 출처 및 귀속
+> `agent-foundry` 는 [robin (Minho Hwang)](https://github.com/revfactory) 님의
+> [revfactory/harness](https://github.com/revfactory/harness) 를 Apache-2.0 하에 이어받아
+> **유지보수하는 파생본**입니다.
+>
+> 원저자는 훌륭한 v2 재구축을 작성했지만 2026-07-20 이후 머지되지 못한 채
+> (머지 충돌 + `maintainerCanModify=false`) 남아 있고, 그래서 배포된 `main` 은
+> 제거된 `TeamCreate` API 에 의존하는 v1 에 머물러 있습니다. 이 레포는 그 v2 작업과,
+> 검토 후 채택한 커뮤니티 PR, 그리고 문서가 거짓말하지 못하게 막는 CI 를 함께 담았습니다.
+>
+> 전체 크레딧은 [NOTICE](./NOTICE) 와 [docs/ATTRIBUTION.md](./docs/ATTRIBUTION.md) 를 보세요.
+> `harness` / `evolve` **스킬 이름은 그대로 유지**했습니다 — 익숙한 트리거 문구와
+> v1 마이그레이션 경로가 계속 동작하도록.
 
 ## v2에서 달라진 것
 
@@ -52,8 +66,8 @@ Phase 7: 운영/유지보수 — 진화는 /harness:evolve
 ### 마켓플레이스 설치
 
 ```shell
-/plugin marketplace add revfactory/harness
-/plugin install harness@harness-marketplace
+/plugin marketplace add IISweetHeartII/agent-foundry
+/plugin install agent-foundry@agent-foundry-marketplace
 ```
 
 ### 글로벌 스킬로 직접 설치
@@ -114,4 +128,8 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 
 ## 라이선스
 
-Apache 2.0
+Apache License 2.0 — [LICENSE](./LICENSE) 참조.
+
+이 저장소는 [revfactory/harness](https://github.com/revfactory/harness)(Copyright 2025 robin)의
+파생 저작물입니다. 수정한 파일에는 변경 고지를 남겼고, 업스트림의 저작권·귀속 고지는
+Apache-2.0 §4 에 따라 그대로 보존했습니다. [NOTICE](./NOTICE) 참조.

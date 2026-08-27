@@ -1,0 +1,18 @@
+agent-foundry
+Copyright 2026 IISweetHeartII
+
+This product includes software developed as part of the "harness" project:
+
+  harness — Copyright 2025 robin (Minho Hwang)
+  https://github.com/revfactory/harness
+  Licensed under the Apache License, Version 2.0.
+
+This is a derivative work. Files have been modified from the originals.
+
+The baseline for this derivative is the upstream's unmerged v2.1.0 rebuild,
+authored by robin (Minho Hwang) as pull request #51 and reconciled against
+upstream main by Rudlord Rud (@chipoto69) as pull request #56.
+
+See CHANGELOG.md for the list of changes and docs/ATTRIBUTION.md for the
+per-pull-request disposition and credit to upstream contributors whose work
+is included here.
