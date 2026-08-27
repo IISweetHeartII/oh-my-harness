@@ -1,3 +1,11 @@
 .DS_Store
 .claude/
 _workspace/
+
+# The linter's reference harness lives under a .claude/ directory by necessity —
+# that is the shape it has to have. The blanket ignore above swallowed it whole,
+# and CI ran against a repository where the fixture did not exist while it sat
+# on disk locally. Git cannot re-include a file whose parent directory is
+# excluded, so the directory itself has to be un-excluded first.
+!tests/fixtures/**/.claude/
+!tests/fixtures/**/.claude/**

@@ -101,6 +101,13 @@ def break_change_notice(repo: Path) -> str:
     return f"stripped the Apache-2.0 change notice from {inline[0]}"
 
 
+def break_fixtures_tracked(repo: Path) -> str:
+    """An untracked fixture file — the .gitignore trap that made CI diverge."""
+    (repo / "tests" / "fixtures" / "clean-harness" / "UNTRACKED.md").write_text(
+        "# a fixture file git never saw\n", encoding="utf-8")
+    return "added a fixture file that git does not track"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -118,6 +125,7 @@ def break_readme_parity(repo: Path) -> str:
 CASES = {
     "required-files": break_required_files,
     "size-budget": break_size_budget,
+    "fixtures-tracked": break_fixtures_tracked,
     "readme-parity": break_readme_parity,
     "plugin-manifests": break_plugin_manifests,
     "skill-frontmatter": break_skill_frontmatter,
@@ -259,6 +267,13 @@ def copy_tree(dest: Path) -> None:
         ROOT, dest,
         ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__"),
     )
+    # fixtures-tracked asks git what it tracks, so the copy needs a git view.
+    # Seed it from the real repository's index rather than the working tree, so
+    # the copy inherits exactly what a fresh clone would get.
+    subprocess.run(["git", "init", "-q"], cwd=dest, check=False,
+                   capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=dest, check=False,
+                   capture_output=True)
 
 
 def main() -> int:

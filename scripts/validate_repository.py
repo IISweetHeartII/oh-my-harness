@@ -431,6 +431,36 @@ def check_readme_parity(errors: list[str]) -> None:
             )
 
 
+def check_fixtures_tracked(errors: list[str]) -> None:
+    """Files the test suite depends on must actually be in the repository.
+
+    The reference harness lives under a .claude/ directory, and the blanket
+    `.claude/` line in .gitignore swallowed it whole. Locally everything passed
+    because the files were on disk; CI cloned a repository where they did not
+    exist. "Works on my machine" here was literally "the file is on my machine".
+    """
+    fixture = ROOT / "tests" / "fixtures" / "clean-harness"
+    if not fixture.is_dir():
+        errors.append("tests/fixtures/clean-harness is missing")
+        return
+    on_disk = {p.relative_to(ROOT).as_posix() for p in fixture.rglob("*") if p.is_file()}
+    if not on_disk:
+        errors.append("tests/fixtures/clean-harness has no files")
+        return
+    try:
+        listed = subprocess.run(["git", "ls-files", "tests/fixtures"],
+                                cwd=ROOT, capture_output=True, text=True, timeout=15)
+        if listed.returncode != 0:
+            return  # not a git checkout; the manifest is the authority here
+    except (OSError, subprocess.SubprocessError):
+        return
+    tracked = {line for line in listed.stdout.splitlines() if line}
+    for path_str in sorted(on_disk - tracked):
+        errors.append(
+            f"{path_str} exists on disk but git does not track it — "
+            f"CI will run without it (check .gitignore)")
+
+
 def check_size_budget(errors: list[str]) -> None:
     for skill_md in sorted((ROOT / "skills").glob("*/SKILL.md")):
         n = len(skill_md.read_text(encoding="utf-8").splitlines())
@@ -445,6 +475,7 @@ def check_size_budget(errors: list[str]) -> None:
 CHECKS = {
     "required-files": check_required_files,
     "size-budget": check_size_budget,
+    "fixtures-tracked": check_fixtures_tracked,
     "readme-parity": check_readme_parity,
     "plugin-manifests": check_plugin_manifests,
     "skill-frontmatter": check_skill_frontmatter,
