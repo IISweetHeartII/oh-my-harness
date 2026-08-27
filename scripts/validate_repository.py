@@ -175,6 +175,32 @@ def check_plugin_manifests(errors: list[str]) -> None:
         errors.append("marketplace plugin source must be './'")
 
 
+# Directories and files Claude Code discovers by convention. Naming them again
+# in plugin.json loads them twice, and the plugin then fails to load outright.
+# `claude plugin validate` does not catch this — it checks manifest shape, not
+# load semantics — so the first sign is an installed plugin that will not start.
+CONVENTIONAL_PATHS = {
+    "hooks": "./hooks/hooks.json",
+    "commands": "./commands/",
+    "skills": "./skills/",
+    "agents": "./agents/",
+}
+
+
+def check_manifest_conventions(errors: list[str]) -> None:
+    plugin = load_json(ROOT / ".claude-plugin" / "plugin.json", errors)
+    if not plugin:
+        return
+    for field, conventional in CONVENTIONAL_PATHS.items():
+        value = plugin.get(field)
+        if isinstance(value, str) and value.rstrip("/") == conventional.rstrip("/"):
+            errors.append(
+                f"plugin.json declares {field!r} = {value!r}, which Claude Code already "
+                f"discovers by convention. Declaring it again loads the same file twice "
+                f"and the plugin fails to load. Remove the field, or point it at a "
+                f"non-standard location.")
+
+
 def check_skill_frontmatter(errors: list[str]) -> None:
     skills_dir = ROOT / "skills"
     if not skills_dir.is_dir():
@@ -478,6 +504,7 @@ CHECKS = {
     "fixtures-tracked": check_fixtures_tracked,
     "readme-parity": check_readme_parity,
     "plugin-manifests": check_plugin_manifests,
+    "manifest-conventions": check_manifest_conventions,
     "skill-frontmatter": check_skill_frontmatter,
     "link-existence": check_link_existence,
     "dead-api": check_dead_api,

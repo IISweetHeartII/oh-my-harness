@@ -41,6 +41,15 @@ def break_required_files(repo: Path) -> str:
     return "deleted NOTICE"
 
 
+def break_manifest_conventions(repo: Path) -> str:
+    """Re-declare a conventional path — the bug that made 2.3.1 fail to load."""
+    path = repo / ".claude-plugin" / "plugin.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["hooks"] = "./hooks/hooks.json"
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return "re-declared the auto-discovered hooks/hooks.json in plugin.json"
+
+
 def break_plugin_manifests(repo: Path) -> str:
     path = repo / ".claude-plugin" / "marketplace.json"
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -128,6 +137,7 @@ CASES = {
     "fixtures-tracked": break_fixtures_tracked,
     "readme-parity": break_readme_parity,
     "plugin-manifests": break_plugin_manifests,
+    "manifest-conventions": break_manifest_conventions,
     "skill-frontmatter": break_skill_frontmatter,
     "link-existence": break_link_existence,
     "dead-api": break_dead_api,
