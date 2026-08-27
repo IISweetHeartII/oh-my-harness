@@ -334,8 +334,13 @@ def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
             shutil.copytree(CLEAN_FIXTURE, broken)
             what = breaker(broken)
             after = run_lint(broken, rule, home)
+            fired = f"[{rule}]" in after.stderr
             if after.returncode == 0:
                 failures.append(f"harness-lint {rule}: did NOT fire after {what}")
+            elif not fired:
+                failures.append(f"harness-lint {rule}: exited non-zero but no [{rule}] finding — "
+                                f"the checker may have crashed rather than caught {what}\n"
+                                f"      {after.stderr.strip().splitlines()[-1][:120] if after.stderr.strip() else '(no stderr)'}")
             else:
                 print(f"  ok  lint:{rule:20s} caught: {what}")
                 if verbose:
@@ -407,8 +412,16 @@ def main() -> int:
                 continue
 
             result = run_check(broken, gate)
+            # exit code 만 보면 «검사기가 크래시한 것» 과 «규칙이 발화한 것» 이
+            # 구분되지 않는다. 문법 오류로 죽어도 non-zero 라 caught 로 셌다.
+            # 그 규칙 이름이 findings 에 실제로 찍혔는지까지 본다.
+            fired = f"[{gate}]" in result.stderr or f"- {gate}" in result.stderr \
+                    or gate.replace("-", " ") in result.stderr.lower()
             if result.returncode == 0:
                 failures.append(f"{check}: did NOT fail after {what}")
+            elif not fired and "Traceback" in result.stderr:
+                failures.append(f"{check}: the checker CRASHED rather than reporting — {what}\n"
+                                f"      {result.stderr.strip().splitlines()[-1][:120]}")
             else:
                 print(f"  ok  {check:22s} caught: {what}")
                 if args.verbose:
