@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Paths excluded from the repository-wide scans. The guardrail fixtures are
 # deliberately broken; scanning them would make the main run always fail.
-EXCLUDED_PARTS = {".git", "node_modules", ".guardrail"}
+EXCLUDED_PARTS = {".git", "node_modules"}
 GUARDRAIL_DIR = ROOT / "tests" / "guardrail"
 
 REQUIRED_FILES = [
@@ -99,12 +99,12 @@ def load_json(path: Path, errors: list[str]) -> dict:
     return {}
 
 
-def scanned_markdown(include_guardrail: bool = False) -> list[Path]:
+def scanned_markdown() -> list[Path]:
     out = []
     for md in sorted(ROOT.rglob("*.md")):
         if any(part in EXCLUDED_PARTS for part in md.parts):
             continue
-        if not include_guardrail and GUARDRAIL_DIR in md.parents:
+        if GUARDRAIL_DIR in md.parents:
             continue
         out.append(md)
     return out
