@@ -27,10 +27,11 @@ import re
 import sys
 from pathlib import Path
 
-# Sections the factory tells every agent definition to carry. Keep this list
-# identical to skills/harness/references/team-patterns.md section 5.
-REQUIRED_AGENT_SECTIONS = ["핵심 역할", "작업 원칙", "입력/출력 프로토콜", "협업"]
-REQUIRED_AGENT_SECTIONS_EN = ["Core role", "Working principles", "Input/output", "Collaboration"]
+# The factory is told to generate in the user's locale (Phase 1-7), so matching
+# section headings by their Korean or English wording would reject a harness
+# built exactly as instructed in Japanese or Chinese. The contract is that four
+# sections exist, not what language names them — so count structure, not words.
+REQUIRED_AGENT_SECTION_COUNT = 4
 
 DEAD_API_TOKENS = ["TeamCreate", "TeamDelete", "team_name", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"]
 DEAD_API_NEGATIONS = [
@@ -64,7 +65,19 @@ class Harness:
         self.root = root
         self.claude = root / ".claude"
         self.agents = sorted((self.claude / "agents").glob("*.md")) if (self.claude / "agents").is_dir() else []
-        self.skills = sorted((self.claude / "skills").glob("*/SKILL.md")) if (self.claude / "skills").is_dir() else []
+        self.skills = sorted((self.claude / "skills").rglob("SKILL.md")) if (self.claude / "skills").is_dir() else []
+
+    def agent_name(self, p: Path) -> str:
+        """The name an agent actually resolves by.
+
+        Resolution uses frontmatter `name`, not the filename, and the two are
+        allowed to differ. Every rule that reasons about agent identity has to
+        go through here — deriving it from the filename is how orphan-agents
+        came to report both a phantom orphan and a phantom missing definition
+        for one perfectly legal harness.
+        """
+        m = NAME_RE.search(frontmatter(p.read_text(encoding="utf-8")) or "")
+        return m.group(1) if m else p.stem
 
     def rel(self, p: Path) -> str:
         try:
@@ -86,7 +99,7 @@ def frontmatter(text: str) -> str | None:
 # --------------------------------------------------------------------------
 
 def rule_agent_frontmatter(h: Harness, out: list[Finding]) -> None:
-    """name and description present; name matches the filename."""
+    """name and description are present. Nothing more — see the note below."""
     for p in h.agents:
         fm = frontmatter(p.read_text(encoding="utf-8"))
         if fm is None:
@@ -95,25 +108,23 @@ def rule_agent_frontmatter(h: Harness, out: list[Finding]) -> None:
         for field in ("name:", "description:"):
             if field not in fm:
                 out.append(Finding("agent-frontmatter", h.rel(p), f"frontmatter missing {field}"))
-        m = NAME_RE.search(fm)
-        if m and m.group(1) != p.stem:
-            out.append(Finding(
-                "agent-frontmatter", h.rel(p),
-                f"frontmatter name {m.group(1)!r} does not match the filename {p.stem!r} — "
-                f"subagent_type resolves by name, so one of the two is unreachable"))
+        # Deliberately NOT checking that name matches the filename. Resolution
+        # is by `name`, so a divergence is legal; asserting otherwise would be a
+        # check that enforces a convention while stating a falsehood about why.
 
 
 def rule_agent_sections(h: Harness, out: list[Finding]) -> None:
-    """Every agent carries the contract sections the factory specifies."""
+    """Every agent carries the four contract sections, in whatever language."""
     for p in h.agents:
         body = p.read_text(encoding="utf-8")
-        missing = [
-            ko for ko, en in zip(REQUIRED_AGENT_SECTIONS, REQUIRED_AGENT_SECTIONS_EN)
-            if ko not in body and en.lower() not in body.lower()
-        ]
-        if missing:
-            out.append(Finding("agent-sections", h.rel(p),
-                               f"missing contract section(s): {', '.join(missing)}"))
+        after_fm = FRONTMATTER_RE.sub("", body, count=1)
+        sections = re.findall(r"^##\s+\S", after_fm, re.MULTILINE)
+        if len(sections) < REQUIRED_AGENT_SECTION_COUNT:
+            out.append(Finding(
+                "agent-sections", h.rel(p),
+                f"{len(sections)} top-level section(s); the contract needs "
+                f"{REQUIRED_AGENT_SECTION_COUNT} (role, principles, I/O protocol, collaboration) "
+                f"— any language"))
 
 
 def rule_dead_api(h: Harness, out: list[Finding]) -> None:
@@ -138,13 +149,14 @@ def rule_user_scope_shadowing(h: Harness, out: list[Finding]) -> None:
     user_dir = Path(os.path.expanduser("~/.claude/agents"))
     if not user_dir.is_dir():
         return
-    global_names = {p.stem for p in user_dir.glob("*.md")}
+    global_names = {h.agent_name(p) for p in user_dir.glob("*.md")}
     for p in h.agents:
-        if p.stem in global_names:
+        name = h.agent_name(p)
+        if name in global_names:
             out.append(Finding(
                 "user-scope-shadowing", h.rel(p),
-                f"shadows the global agent ~/.claude/agents/{p.stem}.md — "
-                f"prefix it (e.g. billing-{p.stem}) or confirm the override is intended"))
+                f"resolves to {name!r}, shadowing the user's global agent of that name — "
+                f"prefix it (e.g. billing-{name}) or confirm the override is intended"))
 
 
 def rule_skill_frontmatter(h: Harness, out: list[Finding]) -> None:
@@ -177,7 +189,7 @@ def rule_orphan_agents(h: Harness, out: list[Finding]) -> None:
     """
     if not h.agents:
         return
-    defined = {p.stem for p in h.agents}
+    defined = {h.agent_name(p) for p in h.agents}
     referenced: set[str] = set()
     for p in h.skills:
         text = p.read_text(encoding="utf-8")
@@ -187,8 +199,9 @@ def rule_orphan_agents(h: Harness, out: list[Finding]) -> None:
             if re.search(rf"\b{re.escape(name)}\b", text):
                 referenced.add(name)
 
+    by_name = {h.agent_name(p): h.rel(p) for p in h.agents}
     for name in sorted(defined - referenced):
-        out.append(Finding("orphan-agents", f".claude/agents/{name}.md",
+        out.append(Finding("orphan-agents", by_name.get(name, f".claude/agents/{name}.md"),
                            "no skill or orchestrator references this agent — "
                            "delete it or wire it in"))
     for name in sorted(referenced - defined):
@@ -212,12 +225,15 @@ def rule_model_tiering(h: Harness, out: list[Finding]) -> None:
         m = MODEL_RE.search(fm)
         if m:
             tiers.setdefault(m.group(1), []).append(p.stem)
-    if len(tiers) == 1 and len(next(iter(tiers.values()))) == len(h.agents):
-        tier = next(iter(tiers))
+    # Uniformity alone is not a defect — identical work deserves an identical
+    # tier. Only the specific v1 antipattern is flagged: everything pinned to
+    # the most expensive tier, which is what the blanket `model: "opus"` rule
+    # produced and what v2 set out to end.
+    if tiers.get("opus") and len(tiers["opus"]) == len(h.agents):
         out.append(Finding("model-tiering", ".claude/agents/",
-                           f"all {len(h.agents)} agents pinned to model: {tier} — "
-                           f"pick per task (complexity, duration, autonomy, latency) "
-                           f"or drop the pin and inherit"))
+                           f"all {len(h.agents)} agents pinned to model: opus — "
+                           f"this is the v1 blanket pin. Choose per task "
+                           f"(complexity, duration, autonomy, latency) or inherit"))
 
 
 RULES = {

@@ -143,8 +143,9 @@ CASES = {
 
 def hl_agent_frontmatter(h: Path) -> str:
     p = h / ".claude" / "agents" / "billing-analyst.md"
-    p.write_text(p.read_text().replace("name: billing-analyst", "name: something-else", 1))
-    return "agent frontmatter name no longer matches its filename"
+    text = p.read_text()
+    p.write_text("\n".join(l for l in text.splitlines() if not l.startswith("description:")))
+    return "agent frontmatter lost its description"
 
 
 def hl_agent_sections(h: Path) -> str:
@@ -213,6 +214,65 @@ def run_lint(harness: Path, rule: str, home: Path) -> subprocess.CompletedProces
         [sys.executable, str(HARNESS_LINT), str(harness), "--only", rule],
         capture_output=True, text=True, env=env,
     )
+
+
+def make_japanese(h: Path) -> str:
+    """A harness generated in Japanese, exactly as Phase 1-7 instructs."""
+    p = h / ".claude" / "agents" / "billing-analyst.md"
+    s = p.read_text()
+    for ko, ja in (("## 핵심 역할", "## 主な役割"), ("## 작업 원칙", "## 作業原則"),
+                   ("## 입력/출력 프로토콜", "## 入出力プロトコル"), ("## 협업", "## 連携")):
+        s = s.replace(ko, ja)
+    p.write_text(s)
+    return "an agent written in Japanese"
+
+
+def make_name_differs(h: Path) -> str:
+    """name diverging from the filename is legal — resolution is by name."""
+    p = h / ".claude" / "agents" / "billing-analyst.md"
+    p.write_text(p.read_text().replace("name: billing-analyst", "name: analyst-for-billing", 1))
+    s = h / ".claude" / "skills" / "build" / "SKILL.md"
+    s.write_text(s.read_text().replace("billing-analyst", "analyst-for-billing"))
+    return "an agent whose name differs from its filename"
+
+
+def make_uniform_sonnet(h: Path) -> str:
+    """Identical work deserves an identical tier — uniform is not a defect."""
+    for name in ("billing-analyst", "billing-builder"):
+        p = h / ".claude" / "agents" / f"{name}.md"
+        p.write_text(p.read_text().replace("model: opus", "model: sonnet"))
+    return "every agent on sonnet because the work is the same shape"
+
+
+VALID_VARIANTS = {
+    "japanese-harness": make_japanese,
+    "name-differs-from-filename": make_name_differs,
+    "uniform-sonnet-tier": make_uniform_sonnet,
+}
+
+
+def guardrail_valid_variants(failures: list[str], verbose: bool) -> None:
+    """Prove the rules do not reject harnesses that are legitimately different.
+
+    Breaking a rule and watching it fail only shows the rule fires. It says
+    nothing about whether the rule is *right* — a wrong rule fails perfectly.
+    These cases are the other half: inputs that must PASS.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp) / "home"
+        (home / ".claude" / "agents").mkdir(parents=True)
+        for label, variant in VALID_VARIANTS.items():
+            h = Path(tmp) / label
+            shutil.copytree(CLEAN_FIXTURE, h)
+            what = variant(h)
+            res = subprocess.run(
+                [sys.executable, str(HARNESS_LINT), str(h)],
+                capture_output=True, text=True, env=dict(os.environ, HOME=str(home)),
+            )
+            if res.returncode != 0:
+                failures.append(f"valid variant rejected — {what}: {res.stderr.strip()}")
+            else:
+                print(f"  ok  valid:{label:22s} accepted: {what}")
 
 
 def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
@@ -327,6 +387,7 @@ def main() -> int:
             shutil.rmtree(broken)
 
     guardrail_harness_lint(failures, args.verbose)
+    guardrail_valid_variants(failures, args.verbose)
 
     if failures:
         print("\nGuardrail suite failed:", file=sys.stderr)
@@ -335,7 +396,8 @@ def main() -> int:
         return 1
 
     print(f"\nGuardrail suite passed: {len(CASES)} repository checks + "
-          f"{len(LINT_CASES)} harness-lint rules, each proven to fire on a broken input")
+          f"{len(LINT_CASES)} harness-lint rules proven to fire on broken input, and "
+          f"{len(VALID_VARIANTS)} legitimate variants proven to pass")
     return 0
 
 

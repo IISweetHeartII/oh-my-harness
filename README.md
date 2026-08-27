@@ -2,7 +2,7 @@
      attribution block added, install and star-history targets retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.3.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.3.1-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/Execution_Modes-3-teal.svg" alt="3 Execution Modes">
@@ -157,13 +157,13 @@ Seven deterministic rules over the generated `.claude/agents/` and `.claude/skil
 
 | Rule | What it catches |
 |---|---|
-| `agent-frontmatter` | `name` not matching the filename — `subagent_type` never reaches that agent |
-| `agent-sections` | A contract section missing from an agent definition |
+| `agent-frontmatter` | A missing `name` or `description`. Filename need not match — resolution is by `name` |
+| `agent-sections` | Fewer than four contract sections — **in any language**, since output follows the user's locale |
 | `dead-api` | A removed API named as an instruction (naming it as history passes) |
 | `user-scope-shadowing` | A generated agent silently replacing one of your global `~/.claude/agents/` |
 | `skill-frontmatter` | Skill name/directory mismatch, broken `references/` paths |
 | `orphan-agents` | **Agents nothing calls**, and calls to agents that do not exist |
-| `model-tiering` | Three or more agents all pinned to one tier — the v1 antipattern returning |
+| `model-tiering` | Three or more agents all pinned to `opus` — the v1 blanket pin. Uniformity by itself is fine |
 
 Nothing here scores style or quality. A check that argues gets switched off, and a
 switched-off check is worse than no check because it still looks like coverage.

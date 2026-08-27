@@ -3,7 +3,7 @@
      v2 content. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.3.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.3.1-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/実行モード-3種-teal.svg" alt="3 Execution Modes">
@@ -159,13 +159,13 @@ your-project/
 
 | ルール | 何を捕まえるか |
 |---|---|
-| `agent-frontmatter` | `name` がファイル名と不一致 — `subagent_type` がそのエージェントに届かない |
-| `agent-sections` | エージェント定義から契約セクションが欠落 |
+| `agent-frontmatter` | `name`・`description` の欠落。ファイル名の一致は要求しない — 解決は `name` による |
+| `agent-sections` | 契約セクションが 4 つ未満 — **言語を問わない**（生成物はユーザの locale に従うため） |
 | `dead-api` | 削除済み API を«指示»として記述（履歴としての言及は通過） |
 | `user-scope-shadowing` | 生成エージェントがグローバルな `~/.claude/agents/` を黙って覆う |
 | `skill-frontmatter` | スキル名とディレクトリの不一致、壊れた `references/` パス |
 | `orphan-agents` | **誰も呼ばないエージェント**、および定義のないエージェント呼び出し |
-| `model-tiering` | 3 つ以上が全て同一ティア固定 — v1 アンチパターンの再来 |
+| `model-tiering` | 3 つ以上が全て **`opus`** 固定 — v1 の一括指定の再来。同一ティア自体は欠陥ではない |
 
 文体や品質を採点するものは一つもありません。議論する検査はオフにされ、オフになった検査は
 カバレッジのように«見える»ぶん、無いより悪いからです。
