@@ -1,0 +1,9 @@
+# Guardrail fixture — removed API instructed from YAML, not Markdown
+# dead-api used to scan only *.md, so the inherited issue templates kept telling
+# people to export a flag that no longer exists. This fixture keeps that gap closed.
+name: Fixture
+body:
+  - type: input
+    attributes:
+      label: Reproduction
+      description: Run TeamCreate(team_name "x") and paste the output here.

@@ -65,5 +65,5 @@ claude "Ticket FIN-427: 신규 법인 고객(중견 제조사, 매출 $80M, 한�
 
 ## 다음 단계
 
-- 결과가 아쉬우면: `"하네스 회고해줘"` → `/harness:evolve`가 피드백을 일반화해 반영
+- 결과가 아쉬우면: `"하네스 회고해줘"` → `/oh-my-harness:evolve`가 피드백을 일반화해 반영
 - v1 하네스가 있는 프로젝트면: `"하네스 점검해줘"` → 마이그레이션 자동 제안 ([migration-v1-to-v2.md](migration-v1-to-v2.md))

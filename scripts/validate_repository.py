@@ -100,14 +100,30 @@ def load_json(path: Path, errors: list[str]) -> dict:
 
 
 def scanned_markdown() -> list[Path]:
+    return _scanned(("*.md",))
+
+
+def scanned_text() -> list[Path]:
+    """Markdown plus the YAML that also instructs a reader.
+
+    dead-api originally scanned only Markdown, and the inherited issue
+    templates therefore kept telling people to export a flag that no longer
+    exists. Filtering by extension is how a check quietly stops covering the
+    thing it was written for.
+    """
+    return _scanned(("*.md", "*.yml", "*.yaml"))
+
+
+def _scanned(patterns: tuple[str, ...]) -> list[Path]:
     out = []
-    for md in sorted(ROOT.rglob("*.md")):
-        if any(part in EXCLUDED_PARTS for part in md.parts):
-            continue
-        if GUARDRAIL_DIR in md.parents:
-            continue
-        out.append(md)
-    return out
+    for pattern in patterns:
+        for path in ROOT.rglob(pattern):
+            if any(part in EXCLUDED_PARTS for part in path.parts):
+                continue
+            if GUARDRAIL_DIR in path.parents:
+                continue
+            out.append(path)
+    return sorted(set(out))
 
 
 # --------------------------------------------------------------------------
@@ -226,7 +242,7 @@ def check_link_existence(errors: list[str]) -> None:
 
 def check_dead_api(errors: list[str]) -> None:
     """Flag removed-API tokens used as instructions rather than as history."""
-    for md in scanned_markdown():
+    for md in scanned_text():
         if rel(md) in DEAD_API_EXEMPT_FILES:
             continue
         for lineno, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):

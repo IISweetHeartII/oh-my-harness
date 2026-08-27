@@ -38,7 +38,17 @@
 - **Phase 0 / Phase 3-0 중복 검토가 유저 스코프까지 감사** — `~/.claude/agents/` 를 함께 읽는다. 프로젝트 스코프가 유저 스코프를 덮으므로, 같은 이름을 만들면 사용자의 전역 에이전트가 경고 없이 사라진다
 - **워크플로우 통합** — `harness-validation.yml` 을 `validation.yml` 로 합침
 
+### Security
+
+- 🔴 **이슈 템플릿이 보안 신고를 제3자에게 보내고 있었다** — 업스트림에서 그대로 상속한 `.github/ISSUE_TEMPLATE/config.yml` 이 비공개 취약점 제보를 **원저자의 회사 이메일**로 보내고, `bug_report.yml` 이 이슈를 `revfactory` 에게 자동 할당했다. 원저자는 이 파생본의 제보를 받기로 한 적이 없다. 전 경로를 이 저장소로 재배선했고 보안 채널은 GitHub Private Vulnerability Reporting 으로 교체
+- **이슈 템플릿의 재현 절차가 삭제된 API 를 지시하고 있었다** — `export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 와 존재하지 않는 `harness@harness` 설치 명령. `dead-api` 가 마크다운만 스캔해서 `.yml` 을 통과시켰다 → 검사를 `.yml`/`.yaml` 로 확장하고 YAML 가드레일 픽스처 추가
+
 ### Fixed
+
+- **LICENSE 를 Apache 공식 원문으로 복원** — 상속본이 라이선스 **본문 3곳**을 바꿔놨다(`submitted to Licensor`→`the Licensor`, `received by Licensor`→`the Licensor`, `excluding those notices`→`any notices`)+부록 삭제. 본문이 바뀐 라이선스는 Apache License 라 보기 어렵다. 원저자 저작권은 NOTICE 와 각 파일 고지에 보존
+- **JSON 두 개가 스스로 변경 고지를 지니게** — `_notice` 키. Apache-2.0 §4(b) 는 "수정된 파일이 고지를 carry" 하라고 하지 JSON 예외를 두지 않는다. NOTICE 대체 주장에 기대지 않는다
+- **`/harness:evolve` → `/oh-my-harness:evolve`** — 리브랜드 후 플러그인 스킬 호출은 `plugin-name:skill-name` 이라 기존 표기가 존재하지 않는 명령이 됐다
+- **PR #23 채택 주장을 사실로** — 중국어 트리거를 두 매니페스트에만 넣고 `skills/harness/SKILL.md` description 을 빠뜨려, ATTRIBUTION 의 ADOPTED 가 절반만 참이었다
 
 - **`docs/quickstart.md` 설치 명령** — 존재하지 않는 `harness@harness` 를 안내하고 있었다 (upstream PR #46, [@k002bill2](https://github.com/k002bill2))
 - **충돌마커 검사의 거짓양성** — `=======` 는 마크다운 setext 제목 밑줄과 같다. 같은 파일에 여는/닫는 마커가 있을 때만 중간 마커로 판정하도록 수정

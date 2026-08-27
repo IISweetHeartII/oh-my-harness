@@ -39,7 +39,7 @@ v2 is a ground-up rebuild for the current Claude Code multi-agent runtime:
 - **Workflow-native quality patterns.** Adversarial verification, judge panels, loop-until-dry, multi-modal sweeps, completeness critics — codified so generated harnesses filter out plausible-but-wrong output.
 - **No experimental flags.** The `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` dependency is gone entirely.
 - **Sane model policy.** v1 pinned every agent to `model: "opus"`. v2 selects a tier per agent — opus / sonnet — based on the task's complexity, duration, autonomy, and latency needs, and forbids unjustified blanket pins.
-- **`/harness:evolve` actually ships.** The evolution mechanism v1 only documented is now a real skill: it captures the delta between your initial and current harness, generalizes feedback, and feeds it back into agents/skills/orchestrators.
+- **`/oh-my-harness:evolve` actually ships.** The evolution mechanism v1 only documented is now a real skill: it captures the delta between your initial and current harness, generalizes feedback, and feeds it back into agents/skills/orchestrators.
 - **v1 migration built in.** The factory detects v1 artifacts (`TeamCreate`, `TeamDelete`, experimental flags) and offers a mechanical migration path.
 
 ## Core features
@@ -48,7 +48,7 @@ v2 is a ground-up rebuild for the current Claude Code multi-agent runtime:
 - **Skill generation** — context-efficient skills via Progressive Disclosure, with reuse checks before generating duplicate agents or skills
 - **Orchestration** — data-passing protocols (structured schemas, files, messages, tasks), error handling, resume support
 - **Verification** — trigger evals, dry runs, with-skill vs. without-skill A/B testing (optionally as a workflow itself)
-- **Evolution** — `/harness:evolve` turns usage feedback into measurable next-generation improvements
+- **Evolution** — `/oh-my-harness:evolve` turns usage feedback into measurable next-generation improvements
 
 ## Category — Where Harness Sits
 
@@ -83,7 +83,7 @@ Phase 3: Agent definitions (.claude/agents/)
 Phase 4: Skill generation (.claude/skills/)
 Phase 5: Orchestration & CLAUDE.md pointer
 Phase 6: Verification & testing
-Phase 7: Maintenance — evolution via /harness:evolve
+Phase 7: Maintenance — evolution via /oh-my-harness:evolve
 ```
 
 ## Install

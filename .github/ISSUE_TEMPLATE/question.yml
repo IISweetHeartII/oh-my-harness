@@ -1,3 +1,4 @@
+# Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin): repointed at this fork.
 name: Question
 description: Ask a how-to or clarification question about Harness
 title: "[question] "
@@ -6,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Questions are welcome. If your question is open-ended or invites discussion, [GitHub Discussions](https://github.com/revfactory/harness/discussions) is usually a better venue.
+        Questions are welcome. If your question is open-ended or invites discussion, [GitHub Discussions](https://github.com/IISweetHeartII/oh-my-harness/discussions) is usually a better venue.
 
         We try to triage questions within 48h.
 

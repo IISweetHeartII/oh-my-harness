@@ -63,6 +63,14 @@ def break_dead_api(repo: Path) -> str:
     return "added a doc instructing the reader to call TeamCreate"
 
 
+def break_dead_api_yaml(repo: Path) -> str:
+    """Same rule, non-Markdown carrier — the gap that let the issue templates
+    keep instructing readers to export a removed experimental flag."""
+    shutil.copy(CASES_DIR / "dead-api.yml.fixture",
+                repo / ".github" / "ISSUE_TEMPLATE" / "guardrail-dead-api.yml")
+    return "added a YAML template instructing the reader to call TeamCreate"
+
+
 def break_version_consistency(repo: Path) -> str:
     path = repo / ".claude-plugin" / "plugin.json"
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -112,6 +120,7 @@ CASES = {
     "skill-frontmatter": break_skill_frontmatter,
     "link-existence": break_link_existence,
     "dead-api": break_dead_api,
+    "dead-api-yaml": break_dead_api_yaml,
     "version-consistency": break_version_consistency,
     "change-notice": break_change_notice,
 }
@@ -142,7 +151,10 @@ def main() -> int:
         [sys.executable, str(VALIDATOR), "--list"],
         cwd=ROOT, capture_output=True, text=True,
     ).stdout.split()
-    uncovered = sorted(set(known) - set(CASES))
+    # dead-api-yaml exercises the dead-api check through a non-Markdown file,
+    # so it is an extra case rather than a check of its own.
+    ALIASES = {"dead-api-yaml": "dead-api"}
+    uncovered = sorted(set(known) - set(CASES) - set(ALIASES.values()))
     if uncovered:
         print(f"FAIL: checks with no guardrail case: {', '.join(uncovered)}", file=sys.stderr)
         return 1
@@ -154,7 +166,8 @@ def main() -> int:
 
         for check, breaker in CASES.items():
             # 1. the pristine tree must pass, or the case proves nothing
-            clean = run_check(pristine, check)
+            gate = ALIASES.get(check, check)
+            clean = run_check(pristine, gate)
             if clean.returncode != 0:
                 failures.append(f"{check}: fails on the pristine tree — cannot prove anything")
                 if args.verbose:
@@ -170,7 +183,7 @@ def main() -> int:
                 failures.append(f"{check}: fixture could not be applied: {exc}")
                 continue
 
-            result = run_check(broken, check)
+            result = run_check(broken, gate)
             if result.returncode == 0:
                 failures.append(f"{check}: did NOT fail after {what}")
             else:

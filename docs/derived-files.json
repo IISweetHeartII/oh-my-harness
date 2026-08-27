@@ -5,8 +5,13 @@
   "modified": [
     ".claude-plugin/marketplace.json",
     ".claude-plugin/plugin.json",
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/ISSUE_TEMPLATE/question.yml",
     ".github/workflows/validation.yml",
     "CHANGELOG.md",
+    "LICENSE",
     "README.md",
     "README_KO.md",
     "docs/quickstart.md",
@@ -16,8 +21,7 @@
     "skills/harness/references/orchestrator-template.md"
   ],
   "commentUnsupported": [
-    ".claude-plugin/marketplace.json",
-    ".claude-plugin/plugin.json"
+    "LICENSE"
   ],
   "derivedNew": [
     "README_JA.md",
@@ -26,14 +30,9 @@
     "skills/harness/references/self-evolution-loop.md"
   ],
   "unmodified": [
-    ".github/ISSUE_TEMPLATE/bug_report.yml",
-    ".github/ISSUE_TEMPLATE/config.yml",
-    ".github/ISSUE_TEMPLATE/feature_request.yml",
-    ".github/ISSUE_TEMPLATE/question.yml",
     ".github/PULL_REQUEST_TEMPLATE.md",
     ".gitignore",
     "CONTRIBUTING.md",
-    "LICENSE",
     "docs/migration-v1-to-v2.md",
     "skills/harness/references/execution-modes.md",
     "skills/harness/references/model-selection-guide.md",

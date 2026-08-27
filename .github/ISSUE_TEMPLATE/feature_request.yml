@@ -1,3 +1,4 @@
+# Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin): repointed at this fork.
 name: Feature request
 description: Propose a new capability or enhancement for Harness
 title: "[feat] "
@@ -8,7 +9,7 @@ body:
       value: |
         Thanks for the idea. Features take a bit of back-and-forth — please help us with the "why" before the "what".
 
-        For anything RFC-sized (new pattern family, runtime support, breaking API), consider starting in [GitHub Discussions](https://github.com/revfactory/harness/discussions) first.
+        For anything RFC-sized (new pattern family, runtime support, breaking API), consider starting in [GitHub Discussions](https://github.com/IISweetHeartII/oh-my-harness/discussions) first.
 
   - type: textarea
     id: problem

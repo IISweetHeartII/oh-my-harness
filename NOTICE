@@ -17,12 +17,20 @@ See CHANGELOG.md for the list of changes and docs/ATTRIBUTION.md for the
 per-pull-request disposition and credit to upstream contributors whose work
 is included here.
 
-Files modified from the originals are listed in docs/derived-files.json.
-Two of them cannot carry an inline notice because JSON has no comment syntax,
-so they are named here instead:
+Files modified from the originals are listed in docs/derived-files.json and
+carry an inline change notice, except:
 
-  .claude-plugin/plugin.json
-  .claude-plugin/marketplace.json
+  LICENSE — replaced with the canonical Apache License 2.0 text from
+            https://www.apache.org/licenses/LICENSE-2.0.txt. The copy
+            inherited from upstream had three alterations to the license
+            body itself ("submitted to the Licensor" for "submitted to
+            Licensor", "received by the Licensor" for "received by
+            Licensor", "excluding any notices" for "excluding those
+            notices") and had the appendix replaced by a copyright line.
+            An altered licence body is arguably no longer the Apache
+            License, so the canonical text was restored. The upstream
+            copyright it carried is preserved above and in every modified
+            file's own notice.
 
 The following file was removed from the upstream tree:
 
