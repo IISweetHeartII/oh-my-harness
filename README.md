@@ -2,7 +2,7 @@
      attribution block added, install and star-history targets retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.5.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/Execution_Modes-3-teal.svg" alt="3 Execution Modes">
@@ -28,6 +28,11 @@
 > The `harness` / `evolve` **skill names are kept unchanged** so the familiar trigger phrases
 > and the v1 migration path keep working.
 
+
+<p align="center">
+  <img src="./docs/images/01-what-it-does.png" alt="One sentence in, a working team out" width="820">
+</p>
+
 ## What's new in v2
 
 v2 is a ground-up rebuild for the current Claude Code multi-agent runtime:
@@ -41,6 +46,11 @@ v2 is a ground-up rebuild for the current Claude Code multi-agent runtime:
 - **Sane model policy.** v1 pinned every agent to `model: "opus"`. v2 selects a tier per agent — opus / sonnet — based on the task's complexity, duration, autonomy, and latency needs, and forbids unjustified blanket pins.
 - **`/oh-my-harness:evolve` actually ships.** The evolution mechanism v1 only documented is now a real skill: it captures the delta between your initial and current harness, generalizes feedback, and feeds it back into agents/skills/orchestrators.
 - **v1 migration built in.** The factory detects v1 artifacts (`TeamCreate`, `TeamDelete`, experimental flags) and offers a mechanical migration path.
+
+
+<p align="center">
+  <img src="./docs/images/02-silent-failure.png" alt="A missing tool does not raise an error" width="820">
+</p>
 
 ## Core features
 
@@ -120,6 +130,11 @@ After using a generated harness:
 
 ### Choosing an execution mode
 
+<p align="center">
+  <img src="./docs/images/03-execution-modes.png" alt="Three ways to run a team" width="820">
+</p>
+
+
 | Mode | Primitive | When |
 |------|-----------|------|
 | **Workflow orchestration** | `Workflow` scripts | Control flow is deterministic: enumerable fan-outs, verification loops, large scale, structured outputs |
@@ -142,6 +157,11 @@ your-project/
 │       └── build/SKILL.md
 └── CLAUDE.md            # minimal pointer: trigger rule + change history
 ```
+
+
+<p align="center">
+  <img src="./docs/images/04-lint-gate.png" alt="The factory checks what it generated" width="820">
+</p>
 
 ## Verifying a generated harness
 
@@ -167,6 +187,11 @@ Seven deterministic rules over the generated `.claude/agents/` and `.claude/skil
 
 Nothing here scores style or quality. A check that argues gets switched off, and a
 switched-off check is worse than no check because it still looks like coverage.
+
+
+<p align="center">
+  <img src="./docs/images/05-guardrails.png" alt="Who checks the checker" width="820">
+</p>
 
 Each of the seven is itself proven: the guardrail suite breaks every rule on purpose and
 requires the linter to notice. `/oh-my-harness:harness-audit` runs the same linter as part

@@ -2,7 +2,7 @@
      attribution block added, install target retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.5.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/실행모드-3종-teal.svg" alt="3 Execution Modes">
@@ -29,6 +29,11 @@
 > `harness` / `evolve` **스킬 이름은 그대로 유지**했습니다 — 익숙한 트리거 문구와
 > v1 마이그레이션 경로가 계속 동작하도록.
 
+
+<p align="center">
+  <img src="./docs/images/01-what-it-does.png" alt="한 문장이 들어가면 굴러가는 팀이 나온다" width="820">
+</p>
+
 ## v2에서 달라진 것
 
 v2는 현행 Claude Code 멀티에이전트 런타임에 맞춰 바닥부터 재구축했습니다:
@@ -42,6 +47,11 @@ v2는 현행 Claude Code 멀티에이전트 런타임에 맞춰 바닥부터 재
 - **합리적 모델 정책.** v1은 모든 에이전트를 `model: "opus"`로 고정했습니다. v2는 업무의 복잡도·작업 기간·자율성·응답 속도에 따라 에이전트별로 opus/sonnet 티어를 선택하며, 무근거 일괄 지정을 금지합니다.
 - **`/oh-my-harness:evolve` 실제 출시.** v1이 문서로만 약속했던 진화 메커니즘이 실제 스킬로 제공됩니다: 초기 구성과 현재 상태의 델타를 포착하고, 피드백을 일반화하여 에이전트·스킬·오케스트레이터에 되먹입니다.
 - **v1 마이그레이션 내장.** 팩토리가 v1 산출물(`TeamCreate`, `TeamDelete`, 실험 플래그)을 감지하면 기계적 마이그레이션 경로를 제안합니다.
+
+
+<p align="center">
+  <img src="./docs/images/02-silent-failure.png" alt="없는 툴은 에러를 내지 않는다" width="820">
+</p>
 
 ## 핵심 기능
 
@@ -121,6 +131,11 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 
 ### 실행 모드 선택
 
+<p align="center">
+  <img src="./docs/images/03-execution-modes.png" alt="팀을 굴리는 세 가지 방법" width="820">
+</p>
+
+
 | 모드 | 프리미티브 | 언제 |
 |------|-----------|------|
 | **워크플로우 오케스트레이션** | `Workflow` 스크립트 | 제어 흐름이 결정적: 열거 가능한 팬아웃, 검증 루프, 대규모, 구조화 출력 |
@@ -143,6 +158,11 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 │       └── build/SKILL.md
 └── CLAUDE.md            # 최소 포인터: 트리거 규칙 + 변경 이력
 ```
+
+
+<p align="center">
+  <img src="./docs/images/04-lint-gate.png" alt="팩토리가 자기 생성물을 검사한다" width="820">
+</p>
 
 ## 생성된 하네스 검증
 
@@ -167,6 +187,11 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 
 문체나 품질을 점수 매기는 것은 하나도 없다. 논쟁하는 검사는 꺼지고, 꺼진 검사는
 커버리지처럼 «보이기» 때문에 없는 것보다 나쁘다.
+
+
+<p align="center">
+  <img src="./docs/images/05-guardrails.png" alt="검사기는 누가 검사하나" width="820">
+</p>
 
 7종 각각도 증명돼 있다 — 가드레일이 매 규칙을 일부러 깨뜨리고 린터가 잡는지 확인한다.
 `/oh-my-harness:harness-audit` 는 기존 하네스를 읽기 전용으로 감사하면서 같은 린터를 돌린다.

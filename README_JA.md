@@ -3,7 +3,7 @@
      v2 content. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.0-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.5.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/実行モード-3種-teal.svg" alt="3 Execution Modes">
@@ -30,6 +30,11 @@
 > `harness` / `evolve` の**スキル名は変更していません** — 慣れ親しんだトリガー文言と
 > v1 からの移行経路がそのまま動くようにするためです。
 
+
+<p align="center">
+  <img src="./docs/images/01-what-it-does.png" alt="一文を入れると動くチームが出てくる" width="820">
+</p>
+
 ## v2 での変更点
 
 v2 は現行の Claude Code マルチエージェントランタイム向けにゼロから再構築されています。
@@ -43,6 +48,11 @@ v2 は現行の Claude Code マルチエージェントランタイム向けに�
 - **健全なモデルポリシー。** v1 は全エージェントを `model: "opus"` に固定していました。v2 はタスクの複雑さ・所要時間・自律性・レイテンシ要件に応じて opus / sonnet のティアを選択し、根拠のない一括固定を禁止します。
 - **`/oh-my-harness:evolve` が実際に出荷されました。** v1 では文書化されているだけだった進化メカニズムが実スキルになりました。初期ハーネスと現行ハーネスの差分を捉え、フィードバックを一般化して、エージェント・スキル・オーケストレーターへ還元します。
 - **v1 マイグレーション内蔵。** 工場が v1 の成果物（`TeamCreate`、`TeamDelete`、実験フラグ）を検出し、機械的な移行経路を提示します。
+
+
+<p align="center">
+  <img src="./docs/images/02-silent-failure.png" alt="無いツールはエラーを出さない" width="820">
+</p>
 
 ## 主な機能
 
@@ -123,6 +133,11 @@ design an agent team for <domain>
 
 ### 実行モードの選び方
 
+<p align="center">
+  <img src="./docs/images/03-execution-modes.png" alt="チームを動かす三つの方法" width="820">
+</p>
+
+
 | モード | プリミティブ | 使いどころ |
 |--------|-------------|-----------|
 | **ワークフローオーケストレーション** | `Workflow` スクリプト | 制御フローが決定的な場合: 列挙可能なファンアウト、検証ループ、大規模実行、構造化出力 |
@@ -145,6 +160,11 @@ your-project/
 │       └── build/SKILL.md
 └── CLAUDE.md            # 最小限のポインタ: トリガールール + 変更履歴
 ```
+
+
+<p align="center">
+  <img src="./docs/images/04-lint-gate.png" alt="工場は自分の生成物を検査する" width="820">
+</p>
 
 ## 生成したハーネスの検証
 
@@ -169,6 +189,11 @@ your-project/
 
 文体や品質を採点するものは一つもありません。議論する検査はオフにされ、オフになった検査は
 カバレッジのように«見える»ぶん、無いより悪いからです。
+
+
+<p align="center">
+  <img src="./docs/images/05-guardrails.png" alt="検査器は誰が検査するのか" width="820">
+</p>
 
 7 種それぞれも証明済みです — ガードレールが各ルールを故意に破り、リンタが気づくか確認します。
 `/oh-my-harness:harness-audit` は既存ハーネスを読み取り専用で監査しつつ同じリンタを実行します。
