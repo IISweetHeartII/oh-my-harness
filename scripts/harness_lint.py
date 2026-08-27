@@ -124,13 +124,32 @@ def rule_agent_frontmatter(h: Harness, out: list[Finding]) -> None:
             out.append(Finding("agent-frontmatter", h.rel(p), "no YAML frontmatter"))
             continue
         for field in ("name", "description"):
-            # 부분문자열이 아니라 «줄머리의 키» 로 본다. description 값 안에
-            # "name:" 이라는 글자가 있으면 키가 없어도 통과해 버린다.
-            if not re.search(rf"^{field}\s*:", fm, re.MULTILINE):
+            # 키의 «존재» 만 보면 `description:` 뒤가 비어 있어도 통과한다. 빈 값은
+            # 없는 것과 같다 — description 이 비면 위임 판정이 아예 불가능하다.
+            m = re.search(rf"^{field}\s*:\s*(.*)$", fm, re.MULTILINE)
+            if not m:
                 out.append(Finding("agent-frontmatter", h.rel(p), f"frontmatter missing {field}:"))
+            elif not m.group(1).strip().strip("\"'"):
+                out.append(Finding("agent-frontmatter", h.rel(p), f"frontmatter {field}: is empty"))
         # Deliberately NOT checking that name matches the filename. Resolution
         # is by `name`, so a divergence is legal; asserting otherwise would be a
         # check that enforces a convention while stating a falsehood about why.
+
+
+def rule_agent_duplicates(h: Harness, out: list[Finding]) -> None:
+    """두 파일이 같은 name 을 선언하면 하나는 절대 안 불린다.
+
+    이름 집합을 set 으로 다루면 중복이 조용히 하나로 합쳐져 어떤 규칙에도 안 걸린다.
+    """
+    seen: dict[str, str] = {}
+    for p in h.agents:
+        name = h.agent_name(p)
+        if name in seen:
+            out.append(Finding("agent-duplicates", h.rel(p),
+                               f"declares name {name!r}, already declared by {seen[name]} — "
+                               f"one of the two is unreachable"))
+        else:
+            seen[name] = h.rel(p)
 
 
 def rule_agent_naming(h: Harness, out: list[Finding]) -> None:
@@ -194,7 +213,10 @@ def rule_dead_api(h: Harness, out: list[Finding]) -> None:
                      if t in line and any(c in line for c in ctx)]
             if not hits:
                 continue
-            if any(neg.lower() in line.lower() for neg in DEAD_API_NEGATIONS):
+            # 호출 «형태»(TeamCreate( … ))면 부정어가 같은 줄에 있어도 지시문이다.
+            # "TeamCreate was removed, so call TeamCreate(x)" 한 줄로 통과하던 구멍.
+            imperative = any(re.search(rf"{t}\s*\(", line) for t in DEAD_API_TOKENS)
+            if not imperative and any(neg.lower() in line.lower() for neg in DEAD_API_NEGATIONS):
                 continue
             out.append(Finding("dead-api", h.rel(p),
                                f"instructs {', '.join(hits)}, removed in Claude Code 2.1.178", n))
@@ -228,15 +250,21 @@ def rule_skill_frontmatter(h: Harness, out: list[Finding]) -> None:
             out.append(Finding("skill-frontmatter", h.rel(p), "no YAML frontmatter"))
             continue
         for field in ("name", "description"):
-            if not re.search(rf"^{field}\s*:", fm, re.MULTILINE):
+            m = re.search(rf"^{field}\s*:\s*(.*)$", fm, re.MULTILINE)
+            if not m:
                 out.append(Finding("skill-frontmatter", h.rel(p), f"frontmatter missing {field}:"))
+            elif not m.group(1).strip().strip("\"'"):
+                out.append(Finding("skill-frontmatter", h.rel(p), f"frontmatter {field}: is empty"))
         m = NAME_RE.search(fm)
         if m and m.group(1) != p.parent.name:
             out.append(Finding("skill-frontmatter", h.rel(p),
                                f"frontmatter name {m.group(1)!r} does not match its directory "
                                f"{p.parent.name!r}"))
-        for ref in re.findall(r"`(references/[^`\n]+)`", text):
-            if not (p.parent / ref).is_file():
+        # 백틱 경로만 보면 `[guide](references/missing.md)` 형태를 놓친다.
+        refs = set(re.findall(r"`(references/[^`\n]+)`", text))
+        refs |= set(re.findall(r"\]\((references/[^)\n]+)\)", text))
+        for ref in sorted(refs):
+            if not (p.parent / ref.split("#")[0]).is_file():
                 out.append(Finding("skill-frontmatter", h.rel(p), f"broken reference path: {ref}"))
 
 
@@ -311,6 +339,7 @@ def rule_model_tiering(h: Harness, out: list[Finding]) -> None:
 RULES = {
     "agent-frontmatter": rule_agent_frontmatter,
     "agent-naming": rule_agent_naming,
+    "agent-duplicates": rule_agent_duplicates,
     "agent-sections": rule_agent_sections,
     "dead-api": rule_dead_api,
     "user-scope-shadowing": rule_user_scope_shadowing,

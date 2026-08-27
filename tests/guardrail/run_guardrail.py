@@ -158,6 +158,13 @@ def hl_agent_frontmatter(h: Path) -> str:
     return "agent frontmatter lost its description"
 
 
+def hl_agent_duplicates(h: Path) -> str:
+    """Two files declaring the same name — one of them is unreachable."""
+    src = h / ".claude" / "agents" / "billing-analyst.md"
+    (h / ".claude" / "agents" / "second-copy.md").write_text(src.read_text())
+    return "two agent files declaring the same name"
+
+
 def hl_agent_naming(h: Path) -> str:
     """A bare generic role name — it silently replaces the user's global one."""
     src = h / ".claude" / "agents" / "billing-analyst.md"
@@ -221,6 +228,7 @@ def hl_model_tiering(h: Path) -> str:
 LINT_CASES = {
     "agent-frontmatter": hl_agent_frontmatter,
     "agent-naming": hl_agent_naming,
+    "agent-duplicates": hl_agent_duplicates,
     "agent-sections": hl_agent_sections,
     "dead-api": hl_dead_api,
     "user-scope-shadowing": hl_user_scope_shadowing,
@@ -398,6 +406,10 @@ def main() -> int:
             clean = run_check(pristine, gate)
             if clean.returncode != 0:
                 failures.append(f"{check}: fails on the pristine tree — cannot prove anything")
+            elif gate not in clean.stdout:
+                # 통과 메시지가 그 규칙 이름을 대지 못하면, 그 규칙은 «돌지 않은» 것이다.
+                failures.append(f"{check}: pristine run passed without naming the rule — "
+                                f"the checker may not implement it at all")
                 if args.verbose:
                     print(clean.stderr)
                 continue
@@ -415,13 +427,17 @@ def main() -> int:
             # exit code 만 보면 «검사기가 크래시한 것» 과 «규칙이 발화한 것» 이
             # 구분되지 않는다. 문법 오류로 죽어도 non-zero 라 caught 로 셌다.
             # 그 규칙 이름이 findings 에 실제로 찍혔는지까지 본다.
-            fired = f"[{gate}]" in result.stderr or f"- {gate}" in result.stderr \
-                    or gate.replace("-", " ") in result.stderr.lower()
+            # 그 규칙 이름이 findings 에 «반드시» 나와야 한다. 이전에는 Traceback 이
+            # 있을 때만 이걸 봤고, 그래서 규칙을 하나도 실행하지 않고 exit 2 만 내는
+            # 가짜 검사기가 스위트 전체를 통과했다 — 실측으로 재현됨.
+            fired = f"[{gate}]" in result.stderr or f"- {gate}" in result.stderr
             if result.returncode == 0:
                 failures.append(f"{check}: did NOT fail after {what}")
-            elif not fired and "Traceback" in result.stderr:
-                failures.append(f"{check}: the checker CRASHED rather than reporting — {what}\n"
-                                f"      {result.stderr.strip().splitlines()[-1][:120]}")
+            elif not fired:
+                tail = result.stderr.strip().splitlines()[-1][:120] if result.stderr.strip() else "(no stderr)"
+                why = "crashed" if "Traceback" in result.stderr else "never named the rule"
+                failures.append(f"{check}: exited non-zero but {why} — not proof it caught {what}\n"
+                                f"      {tail}")
             else:
                 print(f"  ok  {check:22s} caught: {what}")
                 if args.verbose:
