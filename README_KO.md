@@ -2,7 +2,7 @@
      attribution block added, install target retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.7.2-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.8.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/실행모드-3종-teal.svg" alt="3 Execution Modes">
@@ -206,6 +206,11 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 ## 선행 연구 결과 (v1)
 
 15개 소프트웨어 엔지니어링 과제에 대한 통제 A/B로 구조화된 사전 설정이 LLM 코드 에이전트 출력 품질에 미치는 영향을 측정: 평균 품질 49.5 → 79.3 (+60%), 승률 15/15, 출력 분산 −32% (n=15, 저자 자체 측정, [revfactory/claude-code-harness](https://github.com/revfactory/claude-code-harness) 참조). 저자 측정 수치이므로 도입 결정 시에는 자체 파일럿 측정을 권장합니다.
+
+## 기여
+
+`bash scripts/preflight.sh` 한 줄이 모든 게이트를 돌린다. CI 도 같은 스크립트를 부른다.
+자세한 내용은 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 라이선스
 

@@ -3,7 +3,7 @@
      v2 content. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.7.2-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.8.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/実行モード-3種-teal.svg" alt="3 Execution Modes">
@@ -208,6 +208,11 @@ your-project/
 ## 先行研究の結果（v1）
 
 15 件のソフトウェアエンジニアリング課題に対する統制 A/B により、構造化された事前設定が LLM コードエージェントの出力品質に与える影響を測定: 平均品質 49.5 → 79.3（+60%）、勝率 15/15、出力分散 −32%（n=15、著者自身による測定、[revfactory/claude-code-harness](https://github.com/revfactory/claude-code-harness) 参照）。これは著者による測定値です。導入判断にあたっては自分たちでパイロットを実施してください。
+
+## コントリビュート
+
+`bash scripts/preflight.sh` の一行がすべてのゲートを実行する。CI も同じスクリプトを呼ぶ。
+詳細は [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## ライセンス
 

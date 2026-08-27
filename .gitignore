@@ -11,3 +11,7 @@ _workspace/
 # excluded, so the directory itself has to be un-excluded first.
 !tests/fixtures/**/.claude/
 !tests/fixtures/**/.claude/**
+
+# byte-compiled python — generated, and version-specific
+__pycache__/
+*.pyc

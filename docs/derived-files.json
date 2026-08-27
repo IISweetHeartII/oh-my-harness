@@ -12,6 +12,7 @@
     ".github/workflows/validation.yml",
     ".gitignore",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "LICENSE",
     "README.md",
     "README_KO.md",

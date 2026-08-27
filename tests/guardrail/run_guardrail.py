@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -59,9 +60,19 @@ def break_plugin_manifests(repo: Path) -> str:
 
 
 def break_skill_frontmatter(repo: Path) -> str:
+    """Rename the skill in frontmatter, whichever way the YAML spells it.
+
+    Substituting the exact string `name: harness` made this case depend on one
+    spelling; `name: "harness"` would have produced a false failure that looks
+    like the gate broke rather than the fixture.
+    """
     path = repo / "skills" / "harness" / "SKILL.md"
     text = path.read_text(encoding="utf-8")
-    path.write_text(text.replace("name: harness", "name: not-the-directory-name", 1), encoding="utf-8")
+    new_text, n = re.subn(r"""^name:[ \t]*["']?harness["']?[ \t]*$""",
+                          "name: not-the-directory-name", text, count=1, flags=re.M)
+    if not n:
+        raise AssertionError("no `name: harness` line to rewrite in skills/harness/SKILL.md")
+    path.write_text(new_text, encoding="utf-8")
     return "skill frontmatter name no longer matches its directory"
 
 
@@ -117,6 +128,36 @@ def break_fixtures_tracked(repo: Path) -> str:
     return "added a fixture file that git does not track"
 
 
+def break_lint_rule_docs(repo: Path) -> str:
+    """Add a rule to the linter that no document mentions — the 7-vs-9 drift.
+
+    The linter grew two rules and two documents kept saying seven, including
+    the fallback list a plugin-less user follows by hand.
+    """
+    path = repo / "scripts" / "harness_lint.py"
+    text = path.read_text(encoding="utf-8")
+    marker = 'RULES = {\n    "agent-frontmatter"'
+    if marker not in text:
+        raise AssertionError("could not find the RULES table to extend")
+    text = text.replace(
+        marker,
+        "def rule_undocumented(h, out) -> None:\n    return\n\n\n"
+        'RULES = {\n    "undocumented-rule": rule_undocumented,\n    "agent-frontmatter"',
+        1)
+    path.write_text(text, encoding="utf-8")
+    return "added a lint rule that no document mentions"
+
+
+def break_ci_runs_preflight(repo: Path) -> str:
+    """Put the gate list back into CI — the drift preflight.sh exists to stop."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    text = text.replace("        run: bash scripts/preflight.sh",
+                        "        run: python3 scripts/validate_repository.py", 1)
+    wf.write_text(text, encoding="utf-8")
+    return "CI calling one gate directly instead of scripts/preflight.sh"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -144,6 +185,8 @@ CASES = {
     "dead-api-yaml": break_dead_api_yaml,
     "version-consistency": break_version_consistency,
     "change-notice": break_change_notice,
+    "lint-rule-docs": break_lint_rule_docs,
+    "ci-runs-preflight": break_ci_runs_preflight,
 }
 
 
@@ -225,6 +268,42 @@ def hl_model_tiering(h: Path) -> str:
     return "pinned every agent to the same model tier"
 
 
+def hl_agent_sections_tilde(h: Path) -> str:
+    """Four ## headings inside a ~~~ fence are examples, not sections.
+
+    A valid CommonMark fence the old backtick-only regex did not know about.
+    Reproduced by the adversarial review: an agent with no real sections at
+    all passed on the strength of its output example.
+    """
+    p = h / ".claude" / "agents" / "billing-analyst.md"
+    body = re.sub(r"^##\s+.*$", "(was a section)", p.read_text(), flags=re.M)
+    p.write_text(body + "\n\n~~~text\n## one\n## two\n## three\n## four\n~~~\n")
+    return "four ## headings inside a ~~~ fence and no real sections"
+
+
+def hl_dead_api_multiline(h: Path) -> str:
+    """team_name inside an Agent(...) call written across several lines."""
+    p = h / ".claude" / "skills" / "build" / "SKILL.md"
+    with p.open("a", encoding="utf-8") as fh:
+        fh.write('\nPhase 9:\n```\nAgent(\n    subagent_type: "billing-analyst",\n'
+                 '    team_name: "billing",\n)\n```\n')
+    return "team_name inside a multi-line Agent(...) call"
+
+
+def hl_orphan_workflow_ghost(h: Path) -> str:
+    """A workflow calling an agent that does not exist.
+
+    Workflow scripts are the main v2 execution mode and the linter did not
+    read them, so this failed only at runtime.
+    """
+    wf = h / ".claude" / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "nightly.ts").write_text(
+        "export const meta = { name: 'nightly', description: 'x' }\n"
+        "await agent('run the sweep', { agentType: 'billing-ghost' })\n", encoding="utf-8")
+    return "a workflow calling an agent with no definition"
+
+
 LINT_CASES = {
     "agent-frontmatter": hl_agent_frontmatter,
     "agent-naming": hl_agent_naming,
@@ -235,6 +314,19 @@ LINT_CASES = {
     "skill-frontmatter": hl_skill_frontmatter,
     "orphan-agents": hl_orphan_agents,
     "model-tiering": hl_model_tiering,
+    # extra carriers for a rule already covered above — same gate, input the
+    # first version of the rule did not look at
+    "agent-sections-tilde-fence": hl_agent_sections_tilde,
+    "dead-api-multiline-call": hl_dead_api_multiline,
+    "orphan-agents-workflow-ghost": hl_orphan_workflow_ghost,
+}
+
+# case name -> the rule it actually exercises, for the cases that are extra
+# carriers rather than gates of their own
+LINT_ALIASES = {
+    "agent-sections-tilde-fence": "agent-sections",
+    "dead-api-multiline-call": "dead-api",
+    "orphan-agents-workflow-ghost": "orphan-agents",
 }
 
 
@@ -267,11 +359,22 @@ def make_name_differs(h: Path) -> str:
 
 
 def make_uniform_sonnet(h: Path) -> str:
-    """Identical work deserves an identical tier — uniform is not a defect."""
-    for name in ("billing-analyst", "billing-builder"):
+    """Identical work deserves an identical tier — uniform is not a defect.
+
+    Three agents, not two: `model-tiering` returns early below three, so a
+    two-agent variant proved the rule accepted it without running a line of
+    it. The variant has to reach the rule body to mean anything.
+    """
+    third = h / ".claude" / "agents" / "billing-checker.md"
+    third.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                     .replace("billing-analyst", "billing-checker"))
+    s = h / ".claude" / "skills" / "build" / "SKILL.md"
+    with s.open("a", encoding="utf-8") as fh:
+        fh.write('\nPhase 3: `Agent(subagent_type: "billing-checker")`\n')
+    for name in ("billing-analyst", "billing-builder", "billing-checker"):
         p = h / ".claude" / "agents" / f"{name}.md"
         p.write_text(p.read_text().replace("model: opus", "model: sonnet"))
-    return "every agent on sonnet because the work is the same shape"
+    return "three agents all on sonnet because the work is the same shape"
 
 
 def make_namespaced(h: Path) -> str:
@@ -280,11 +383,71 @@ def make_namespaced(h: Path) -> str:
     return "a declared agentNamespace that every agent honours"
 
 
+def make_global_name_differs(h: Path) -> str:
+    """Calling a global agent whose file is named something else is legal.
+
+    Resolution is by frontmatter name on both sides. Checking the global side
+    by filename reported this valid harness as calling an undefined agent.
+    """
+    s = h / ".claude" / "skills" / "build" / "SKILL.md"
+    s.write_text(s.read_text() + '\nPhase 9: `Agent(subagent_type: "global-helper")`\n')
+    return "a call to a global agent whose filename differs from its name"
+
+
+def make_sports_team_name(h: Path) -> str:
+    """`team_name` outside any Claude call is an ordinary column name."""
+    s = h / ".claude" / "skills" / "build" / "SKILL.md"
+    s.write_text(s.read_text() + "\n## Roster import\nEach roster row carries a "
+                 "`team_name` column.\nSort the rows by team_name before writing them out.\n")
+    return "team_name as a domain column, in no Claude call"
+
+
+def make_workflow_only_agent(h: Path) -> str:
+    """An agent only a workflow script calls is wired in, not orphaned."""
+    third = h / ".claude" / "agents" / "billing-checker.md"
+    third.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                     .replace("billing-analyst", "billing-checker"))
+    wf = h / ".claude" / "workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    (wf / "nightly.ts").write_text(
+        "export const meta = { name: 'nightly', description: 'x' }\n"
+        "await agent('check the totals', { agentType: 'billing-checker' })\n", encoding="utf-8")
+    return "an agent referenced only from a workflow script"
+
+
+def make_declared_uniform_tier(h: Path) -> str:
+    """Three all-opus specialists, with the reason written down."""
+    third = h / ".claude" / "agents" / "billing-checker.md"
+    third.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                     .replace("billing-analyst", "billing-checker"))
+    s = h / ".claude" / "skills" / "build" / "SKILL.md"
+    with s.open("a", encoding="utf-8") as fh:
+        fh.write('\nPhase 3: `Agent(subagent_type: "billing-checker")`\n')
+    for name in ("billing-analyst", "billing-builder", "billing-checker"):
+        p = h / ".claude" / "agents" / f"{name}.md"
+        p.write_text(p.read_text().replace("model: sonnet", "model: opus"))
+    (h / ".claude" / "harness.json").write_text(json.dumps({
+        "uniformTierRationale": "Every role here reasons over incomplete evidence "
+                                "and a wrong call costs a re-run of the whole night."
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return "three all-opus agents with the reason recorded in harness.json"
+
+
 VALID_VARIANTS = {
     "declared-namespace": make_namespaced,
     "japanese-harness": make_japanese,
     "name-differs-from-filename": make_name_differs,
     "uniform-sonnet-tier": make_uniform_sonnet,
+    "global-agent-name-differs": make_global_name_differs,
+    "sports-team-name": make_sports_team_name,
+    "workflow-only-agent": make_workflow_only_agent,
+    "declared-uniform-tier": make_declared_uniform_tier,
+}
+
+# variants that need something in the fake global agent directory
+VARIANT_GLOBAL_AGENTS = {
+    "global-agent-name-differs": ("different-filename.md",
+                                  "---\nname: global-helper\ndescription: a global agent\n---\n"),
 }
 
 
@@ -296,9 +459,14 @@ def guardrail_valid_variants(failures: list[str], verbose: bool) -> None:
     These cases are the other half: inputs that must PASS.
     """
     with tempfile.TemporaryDirectory() as tmp:
-        home = Path(tmp) / "home"
-        (home / ".claude" / "agents").mkdir(parents=True)
         for label, variant in VALID_VARIANTS.items():
+            # each variant gets its own global agent directory, so one variant's
+            # global agent cannot silently satisfy another's check
+            home = Path(tmp) / f"home-{label}"
+            (home / ".claude" / "agents").mkdir(parents=True)
+            if label in VARIANT_GLOBAL_AGENTS:
+                fname, body = VARIANT_GLOBAL_AGENTS[label]
+                (home / ".claude" / "agents" / fname).write_text(body, encoding="utf-8")
             h = Path(tmp) / label
             shutil.copytree(CLEAN_FIXTURE, h)
             what = variant(h)
@@ -316,7 +484,8 @@ def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
     """Prove each harness-lint rule fires on a generated harness that breaks it."""
     known = subprocess.run([sys.executable, str(HARNESS_LINT), "--list"],
                            capture_output=True, text=True).stdout.split()
-    uncovered = sorted(set(known) - set(LINT_CASES))
+    covered = {LINT_ALIASES.get(c, c) for c in LINT_CASES}
+    uncovered = sorted(set(known) - covered)
     if uncovered:
         failures.append(f"harness-lint rules with no guardrail case: {', '.join(uncovered)}")
         return
@@ -328,34 +497,59 @@ def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
         (home / ".claude" / "agents").mkdir(parents=True)
         (home / ".claude" / "agents" / "analyst.md").write_text("---\nname: analyst\n---\n")
 
-        for rule, breaker in LINT_CASES.items():
-            clean = Path(tmp) / f"clean-{rule}"
+        for case, breaker in LINT_CASES.items():
+            rule = LINT_ALIASES.get(case, case)
+            clean = Path(tmp) / f"clean-{case}"
             shutil.copytree(CLEAN_FIXTURE, clean)
             before = run_lint(clean, rule, home)
             if before.returncode != 0:
-                failures.append(f"harness-lint {rule}: fires on the clean fixture — proves nothing")
+                failures.append(f"harness-lint {case}: fires on the clean fixture — proves nothing")
                 if verbose:
                     print(before.stderr)
                 continue
 
-            broken = Path(tmp) / f"broken-{rule}"
+            broken = Path(tmp) / f"broken-{case}"
             shutil.copytree(CLEAN_FIXTURE, broken)
             what = breaker(broken)
             after = run_lint(broken, rule, home)
-            fired = f"[{rule}]" in after.stderr
-            if after.returncode == 0:
-                failures.append(f"harness-lint {rule}: did NOT fire after {what}")
-            elif not fired:
-                failures.append(f"harness-lint {rule}: exited non-zero but no [{rule}] finding — "
-                                f"the checker may have crashed rather than caught {what}\n"
-                                f"      {after.stderr.strip().splitlines()[-1][:120] if after.stderr.strip() else '(no stderr)'}")
+            why = verdict(after, rule)
+            if why:
+                tail = after.stderr.strip().splitlines()[-1][:120] if after.stderr.strip() else "(no stderr)"
+                failures.append(f"harness-lint {case}: {why} — not proof it caught {what}\n"
+                                f"      {tail}")
             else:
-                print(f"  ok  lint:{rule:20s} caught: {what}")
+                print(f"  ok  lint:{case:26s} caught: {what}")
                 if verbose:
                     print("      " + after.stderr.strip().replace("\n", "\n      "))
 
 
 # --------------------------------------------------------------------------
+
+def verdict(result: subprocess.CompletedProcess, gate: str) -> str | None:
+    """Return None if this run is real proof the rule fired, else why it is not.
+
+    Three things must all hold, and the third is the one that was missing:
+
+      1. non-zero exit                    — something was rejected
+      2. the rule names itself in stderr  — *that* rule, not some other
+      3. exit code is exactly 1           — findings, not an internal error
+
+    Both checkers reserve 1 for findings and 2+ for "could not run". Without
+    the third condition a checker that dies with `[required-files] internal
+    checker failure` and exit 2 is counted as a clean catch — reproduced by
+    the adversarial review, and it passed the whole suite.
+    """
+    if result.returncode == 0:
+        return "did NOT fail"
+    if "Traceback" in result.stderr:
+        return "crashed with a traceback"
+    if result.returncode != 1:
+        return (f"exited {result.returncode}, not 1 — that is the "
+                f"'could not run' code, not a finding")
+    if f"[{gate}]" not in result.stderr and f"- {gate}" not in result.stderr:
+        return "exited non-zero but never named the rule"
+    return None
+
 
 def run_check(repo: Path, check: str) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -365,23 +559,78 @@ def run_check(repo: Path, check: str) -> subprocess.CompletedProcess:
 
 
 def copy_tree(dest: Path) -> None:
+    """Copy the working tree, but keep git's view of what is *tracked*.
+
+    Two things have to be true at once and the first version had only one:
+
+      · uncommitted edits must be under test, or running this before a commit
+        checks the previous commit instead of the change in front of you
+      · a file git does not track must stay untracked in the copy, or
+        `fixtures-tracked` cannot see the .gitignore trap it exists to catch
+
+    `git add -A` satisfied the first and destroyed the second — it promoted
+    every untracked file, so the breakage was tracked by the time the gate
+    looked. Copying the tree and then staging only the paths the real
+    repository tracks keeps both.
+    """
     shutil.copytree(
         ROOT, dest,
         ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__"),
     )
-    # fixtures-tracked asks git what it tracks, so the copy needs a git view.
-    # Seed it from the real repository's index rather than the working tree, so
-    # the copy inherits exactly what a fresh clone would get.
-    subprocess.run(["git", "init", "-q"], cwd=dest, check=False,
-                   capture_output=True)
-    subprocess.run(["git", "add", "-A"], cwd=dest, check=False,
-                   capture_output=True)
+    subprocess.run(["git", "init", "-q"], cwd=dest, check=False, capture_output=True)
+    tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                             check=False, capture_output=True).stdout
+    subprocess.run(
+        ["git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"],
+        cwd=dest, input=tracked, check=False, capture_output=True,
+    )
+
+
+def self_test() -> int:
+    """Test the judge itself, on the shapes that fooled it before.
+
+    Every `ok ... caught:` line in this suite is only worth what `verdict()`
+    is worth. It has been wrong twice: once counting a crash as a catch, once
+    counting an internal error that happened to print the rule name. Both are
+    pinned here so they cannot come back quietly.
+    """
+    class R:  # a stand-in for CompletedProcess
+        def __init__(self, returncode: int, stderr: str) -> None:
+            self.returncode, self.stderr = returncode, stderr
+
+    cases = [
+        ("clean exit is not a catch", R(0, ""), False),
+        ("crash with a traceback is not a catch",
+         R(1, "Traceback (most recent call last):\n  ...\n[required-files] x"), False),
+        ("internal error that prints the rule name is not a catch",
+         R(2, "- [required-files] internal checker failure"), False),
+        ("non-zero without naming the rule is not a catch",
+         R(1, "- [some-other-rule] something else"), False),
+        ("exit 1 naming the rule IS a catch",
+         R(1, "Repository validation failed:\n- [required-files] NOTICE is missing"), True),
+    ]
+    fail = 0
+    for label, result, should_pass in cases:
+        why = verdict(result, "required-files")
+        accepted = why is None
+        if accepted == should_pass:
+            print(f"  ok  {label}")
+        else:
+            print(f"FAIL {label}: verdict={why!r}")
+            fail = 1
+    print("self-test passed" if not fail else "self-test FAILED")
+    return fail
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--self-test", action="store_true",
+                        help="test the pass/fail judge itself and exit")
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     known = subprocess.run(
         [sys.executable, str(VALIDATOR), "--list"],
@@ -424,19 +673,10 @@ def main() -> int:
                 continue
 
             result = run_check(broken, gate)
-            # exit code 만 보면 «검사기가 크래시한 것» 과 «규칙이 발화한 것» 이
-            # 구분되지 않는다. 문법 오류로 죽어도 non-zero 라 caught 로 셌다.
-            # 그 규칙 이름이 findings 에 실제로 찍혔는지까지 본다.
-            # 그 규칙 이름이 findings 에 «반드시» 나와야 한다. 이전에는 Traceback 이
-            # 있을 때만 이걸 봤고, 그래서 규칙을 하나도 실행하지 않고 exit 2 만 내는
-            # 가짜 검사기가 스위트 전체를 통과했다 — 실측으로 재현됨.
-            fired = f"[{gate}]" in result.stderr or f"- {gate}" in result.stderr
-            if result.returncode == 0:
-                failures.append(f"{check}: did NOT fail after {what}")
-            elif not fired:
+            why = verdict(result, gate)
+            if why:
                 tail = result.stderr.strip().splitlines()[-1][:120] if result.stderr.strip() else "(no stderr)"
-                why = "crashed" if "Traceback" in result.stderr else "never named the rule"
-                failures.append(f"{check}: exited non-zero but {why} — not proof it caught {what}\n"
+                failures.append(f"{check}: {why} — not proof it caught {what}\n"
                                 f"      {tail}")
             else:
                 print(f"  ok  {check:22s} caught: {what}")
@@ -453,8 +693,11 @@ def main() -> int:
             print(f"- {f}", file=sys.stderr)
         return 1
 
-    print(f"\nGuardrail suite passed: {len(CASES)} repository checks + "
-          f"{len(LINT_CASES)} harness-lint rules proven to fire on broken input, and "
+    repo_rules = len({ALIASES.get(c, c) for c in CASES})
+    lint_rules = len({LINT_ALIASES.get(c, c) for c in LINT_CASES})
+    print(f"\nGuardrail suite passed: {repo_rules} repository rules "
+          f"({len(CASES)} cases) + {lint_rules} harness-lint rules "
+          f"({len(LINT_CASES)} cases) proven to fire on broken input, and "
           f"{len(VALID_VARIANTS)} legitimate variants proven to pass")
     return 0
 

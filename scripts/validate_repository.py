@@ -498,6 +498,61 @@ def check_size_budget(errors: list[str]) -> None:
             errors.append(f"{rel(ref)} is {n} lines (budget {REFERENCE_MAX_LINES})")
 
 
+def check_ci_runs_preflight(errors: list[str]) -> None:
+    """CI must run the same script a human runs, not its own copy of the list.
+
+    v2.7.0 shipped with a failing guardrail because the push command ran one
+    gate out of three. preflight.sh exists to stop that — but only while the
+    thing that actually blocks a merge calls it. A workflow that re-lists the
+    gates is the same bug one level up: the two lists drift, and the green tick
+    starts meaning "the gates CI knows about".
+    """
+    wf = ROOT / ".github" / "workflows" / "validation.yml"
+    if not wf.is_file():
+        errors.append(".github/workflows/validation.yml is missing")
+        return
+    text = wf.read_text(encoding="utf-8")
+    if "scripts/preflight.sh" not in text:
+        errors.append("validation.yml never runs scripts/preflight.sh — "
+                      "CI and the local gate can now disagree")
+    for script in ("validate_repository.py", "run_guardrail.py"):
+        # naming a gate directly is how the lists drift apart again
+        if f"python3 scripts/{script}" in text or f"python3 tests/guardrail/{script}" in text:
+            errors.append(f"validation.yml calls {script} directly instead of going "
+                          f"through scripts/preflight.sh")
+
+
+def check_lint_rule_docs(errors: list[str]) -> None:
+    """Every implemented lint rule is named in the docs, and the counts agree.
+
+    The linter grew from seven rules to nine and two of the docs kept saying
+    seven — including the fallback list a user follows when the plugin is not
+    installed, which therefore told them to skip two checks. Documentation
+    that describes a checker is part of the checker.
+    """
+    listed = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "harness_lint.py"), "--list"],
+        capture_output=True, text=True, check=False,
+    ).stdout.split()
+    if not listed:
+        errors.append("could not read the rule list from harness_lint.py --list")
+        return
+    for doc in ("skills/harness/SKILL.md", "commands/harness-lint.md"):
+        text = (ROOT / doc).read_text(encoding="utf-8")
+        missing = [r for r in listed if f"`{r}`" not in text]
+        # the command file describes the rules by count, not by name
+        if doc.endswith("commands/harness-lint.md"):
+            if f"{len(listed)}종" not in text:
+                errors.append(f"{doc} does not say 검사 {len(listed)}종 — "
+                              f"harness_lint.py implements {len(listed)} rules")
+            continue
+        if missing:
+            errors.append(f"{doc} never names these implemented rules: {', '.join(missing)}")
+        if f"위 {len(listed)}개 항목" not in text:
+            errors.append(f"{doc}'s manual fallback does not say 위 {len(listed)}개 항목 — "
+                          f"it would tell a plugin-less user to skip rules")
+
+
 CHECKS = {
     "required-files": check_required_files,
     "size-budget": check_size_budget,
@@ -510,6 +565,8 @@ CHECKS = {
     "dead-api": check_dead_api,
     "version-consistency": check_version_consistency,
     "change-notice": check_change_notice,
+    "lint-rule-docs": check_lint_rule_docs,
+    "ci-runs-preflight": check_ci_runs_preflight,
 }
 
 

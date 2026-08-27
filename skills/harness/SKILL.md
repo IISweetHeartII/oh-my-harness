@@ -344,15 +344,17 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/harness_lint.py" .
 | 규칙 | 무엇을 잡나 |
 |---|---|
 | `agent-frontmatter` | `name`·`description` 누락 (파일명 일치는 강제하지 않는다 — 해석은 `name` 기준) |
-| `agent-sections` | 계약 섹션 4개 미만 — **언어 무관**(생성물은 사용자 locale 을 따르므로) |
+| `agent-naming` | 예약된 일반 역할명 사용, 선언한 `agentNamespace` 위반 |
+| `agent-duplicates` | 두 파일이 같은 `name` 을 선언 — 하나는 절대 안 불린다 |
+| `agent-sections` | 계약 섹션 5개 미만 — **언어 무관**(생성물은 사용자 locale 을 따르므로) |
 | `dead-api` | 제거된 API 를 «지시»로 쓴 줄 (설명은 통과) |
 | `user-scope-shadowing` | 사용자의 `~/.claude/agents/` 전역 에이전트를 같은 이름으로 덮음 |
 | `skill-frontmatter` | 스킬 frontmatter·디렉터리명 불일치, 깨진 `references/` 경로 |
 | `orphan-agents` | **아무도 안 부르는 에이전트**, 그리고 정의 없는 에이전트 호출 |
-| `model-tiering` | 3개 이상이 **전원 `opus` 고정** — v1 일괄 지정의 회귀. 같은 티어 자체는 결함이 아니다 |
+| `model-tiering` | 3개 이상이 **전원 `opus` 고정** — v1 일괄 지정의 회귀. 같은 티어 자체는 결함이 아니며, 의도한 것이라면 `.claude/harness.json` 의 `uniformTierRationale` 에 이유를 남기면 면제된다 |
 
 지적이 0건이 될 때까지 고치고 **다시 돌린다**. 플러그인 없이 쓰는 경우(글로벌 스킬 설치)엔
-이 스크립트가 없으므로, 위 7개 항목을 손으로 확인하고 «무엇을 어떻게 확인했는지»를 적는다.
+이 스크립트가 없으므로, 위 9개 항목을 손으로 확인하고 «무엇을 어떻게 확인했는지»를 적는다.
 
 > 🔴 `orphan-agents` 는 이 팩토리의 고질병을 겨눈다 — 에이전트를 27개 만들 수는 있는데
 > 그중 몇 개가 실제로 불리는지 아무도 모르는 상태. 안 불리는 에이전트는 값 없는 비용이다.

@@ -1,5 +1,5 @@
 ---
-description: "이 프로젝트의 생성된 하네스를 계약에 대고 검사한다. 결정적 검사 7종."
+description: "이 프로젝트의 생성된 하네스를 계약에 대고 검사한다. 결정적 검사 9종."
 ---
 
 `${CLAUDE_PLUGIN_ROOT}/scripts/harness_lint.py` 를 이 프로젝트 루트에 대고 실행하고,

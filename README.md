@@ -2,7 +2,7 @@
      attribution block added, install and star-history targets retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.7.2-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.8.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/Execution_Modes-3-teal.svg" alt="3 Execution Modes">
@@ -208,6 +208,11 @@ See [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md). Summary: remove `T
 ## Prior results (v1)
 
 A controlled A/B on 15 software-engineering tasks measured the effect of structured pre-configuration on LLM code-agent output quality: mean quality 49.5 → 79.3 (+60%), 15/15 win rate, −32% output variance (n=15, author-run, see [revfactory/claude-code-harness](https://github.com/revfactory/claude-code-harness)). Treat these as author-measured numbers; run your own pilot for adoption decisions.
+
+## Contributing
+
+One command — `bash scripts/preflight.sh` — runs every gate, and CI runs the same
+script. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

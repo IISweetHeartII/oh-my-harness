@@ -16,5 +16,9 @@ model: sonnet
 - 입력: `_workspace/00_input/`
 - 출력: `_workspace/01_billing-analyst_rules.md`
 
+## 에러 핸들링
+
+차단 원인을 단정할 수 없으면 추정으로 진행하지 않고, 관찰한 것과 관찰하지 못한 것을 나누어 보고한 뒤 멈춘다.
+
 ## 협업
 - billing-builder 에게 규칙표를 넘긴다
