@@ -3,7 +3,7 @@
      v2 content. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.8.4-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.9.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/実行モード-3種-teal.svg" alt="3 Execution Modes">
@@ -175,7 +175,7 @@ your-project/
 /oh-my-harness:harness-lint          # または: python3 scripts/harness_lint.py .
 ```
 
-生成された `.claude/agents/` と `.claude/skills/` に対する決定的なルール 9 種:
+生成された `.claude/agents/`・`.claude/skills/`・`.claude/workflows/` に対する決定的なルール 9 種:
 
 | ルール | 何を捕まえるか |
 |---|---|

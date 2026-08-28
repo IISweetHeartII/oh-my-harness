@@ -1,0 +1,709 @@
+{
+  "_comment": [
+    "제거된 API 식별자는 이 저장소에 원칙적으로 없어야 한다. 여기 적힌 것만 예외다.",
+    "키는 경로 + 토큰 + «그 줄의 해시» 다. 줄을 고치면 면제가 stale 이 되어 게이트가 다시 묻는다 —",
+    "사유는 옛 문장에 대해 쓴 것이기 때문이다.",
+    "규칙이 «지시문인지 서술인지» 를 알아맞히려던 옛 방식은 양쪽으로 틀렸다:",
+    "  · 중립적 역사 서술을 지시문으로 거부했고 (거짓양성)",
+    "  · 대소문자만 바꾸거나 스캔 확장자 밖에 두면 통과했다 (거짓음성 4종)",
+    "그건 의미 분석 문제라 부정어 목록과 정규식으로 닫히지 않는다. 그래서 알아맞히기를 그만뒀다."
+  ],
+  "allow": [
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "token": "TeamCreate",
+      "sha": "c0e974d55443f96a",
+      "reason": "제보자에게 «v1 잔재를 만났는가» 를 묻는 항목. 물으려면 이름을 대야 한다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "2714a590a3a36fff",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "ffdf01e43a58b628",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "TeamCreate",
+      "sha": "1057b4d2a5c71821",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "TeamCreate",
+      "sha": "311e1b8d641a1bd7",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "TeamCreate",
+      "sha": "3fac516a1bfcaf01",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "TeamCreate",
+      "sha": "662d6f413e98623c",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "TeamCreate",
+      "sha": "a83c41b59277e731",
+      "reason": "이 규칙이 거짓양성을 내던 «중립적 역사 서술» 의 실제 예문. 예문을 못 적으면 무엇이 고쳐졌는지 설명할 수 없다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "TeamDelete",
+      "sha": "3fac516a1bfcaf01",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "team_name",
+      "sha": "1057b4d2a5c71821",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "token": "team_name",
+      "sha": "3fac516a1bfcaf01",
+      "reason": "무엇이 제거됐고 무엇을 고쳤는지 적는 곳. 이름을 못 적으면 변경 이력이 성립하지 않는다."
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "token": "TeamCreate",
+      "sha": "c16f5da0faa33200",
+      "reason": "기여 원칙 4 「현행 런타임만 참조한다」의 예시. 금지 대상을 이름으로 들어야 한다."
+    },
+    {
+      "path": "README.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "c0f0c42ffd3b3548",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README.md",
+      "token": "TeamCreate",
+      "sha": "993d8aefda9edc71",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README.md",
+      "token": "TeamCreate",
+      "sha": "b2d11f0373bc9426",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README.md",
+      "token": "TeamCreate",
+      "sha": "e518947b602c1daf",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README.md",
+      "token": "TeamCreate",
+      "sha": "f9b653ebd7fba02f",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README.md",
+      "token": "TeamDelete",
+      "sha": "993d8aefda9edc71",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README.md",
+      "token": "TeamDelete",
+      "sha": "e518947b602c1daf",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_JA.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "7664e86b9ded589f",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_JA.md",
+      "token": "TeamCreate",
+      "sha": "204ff32a558d68b5",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_JA.md",
+      "token": "TeamCreate",
+      "sha": "4849bd7d55e1d608",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_JA.md",
+      "token": "TeamCreate",
+      "sha": "5c1c7ee693bb464f",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_JA.md",
+      "token": "TeamCreate",
+      "sha": "9f0291f93268ceab",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_JA.md",
+      "token": "TeamDelete",
+      "sha": "204ff32a558d68b5",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_JA.md",
+      "token": "TeamDelete",
+      "sha": "5c1c7ee693bb464f",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_KO.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "55480476fac9e4f8",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_KO.md",
+      "token": "TeamCreate",
+      "sha": "93de682d68c3282d",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_KO.md",
+      "token": "TeamCreate",
+      "sha": "a631fe0b1b1fcd8e",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_KO.md",
+      "token": "TeamCreate",
+      "sha": "d2db58ab0cbd25e3",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_KO.md",
+      "token": "TeamCreate",
+      "sha": "f8b7102a06b72c94",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_KO.md",
+      "token": "TeamDelete",
+      "sha": "93de682d68c3282d",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "README_KO.md",
+      "token": "TeamDelete",
+      "sha": "f8b7102a06b72c94",
+      "reason": "이 규칙이 «무엇을» 잡는지 사용자에게 설명하는 표. 대상 API 를 못 적으면 설명이 안 된다."
+    },
+    {
+      "path": "commands/harness-audit.md",
+      "token": "TeamCreate",
+      "sha": "400d08e07c0950ee",
+      "reason": "감사 커맨드가 찾아야 할 v1 잔재의 이름."
+    },
+    {
+      "path": "commands/harness-audit.md",
+      "token": "TeamDelete",
+      "sha": "400d08e07c0950ee",
+      "reason": "감사 커맨드가 찾아야 할 v1 잔재의 이름."
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "c657acaa4ddfca7e",
+      "reason": "업스트림 PR 판정 기록 — 어떤 PR 이 이 API 를 다뤘는지 서술한다."
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "token": "TeamCreate",
+      "sha": "7696e12a3297dcd4",
+      "reason": "업스트림 PR 판정 기록 — 어떤 PR 이 이 API 를 다뤘는지 서술한다."
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "token": "TeamCreate",
+      "sha": "a5bb2032f0d2c304",
+      "reason": "업스트림 PR 판정 기록 — 어떤 PR 이 이 API 를 다뤘는지 서술한다."
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "token": "TeamCreate",
+      "sha": "c657acaa4ddfca7e",
+      "reason": "업스트림 PR 판정 기록 — 어떤 PR 이 이 API 를 다뤘는지 서술한다."
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "token": "TeamCreate",
+      "sha": "ce64fa990c219cfc",
+      "reason": "업스트림 PR 판정 기록 — 어떤 PR 이 이 API 를 다뤘는지 서술한다."
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "token": "TeamDelete",
+      "sha": "a5bb2032f0d2c304",
+      "reason": "업스트림 PR 판정 기록 — 어떤 PR 이 이 API 를 다뤘는지 서술한다."
+    },
+    {
+      "path": "docs/ATTRIBUTION.md",
+      "token": "TeamDelete",
+      "sha": "c657acaa4ddfca7e",
+      "reason": "업스트림 PR 판정 기록 — 어떤 PR 이 이 API 를 다뤘는지 서술한다."
+    },
+    {
+      "path": "docs/OPEN-FINDINGS.md",
+      "token": "TeamCreate",
+      "sha": "b11e14da32b33b2b",
+      "reason": "이 규칙 자체의 결함 이력을 적는 곳. 무엇에 대한 결함이었는지 이름이 필요하다."
+    },
+    {
+      "path": "docs/OPEN-FINDINGS.md",
+      "token": "team_name",
+      "sha": "232f2c4be625812a",
+      "reason": "이 규칙 자체의 결함 이력을 적는 곳. 무엇에 대한 결함이었는지 이름이 필요하다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "b0c9c9b8b91a5eb7",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "ed80cde52fb7f6f6",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "TeamCreate",
+      "sha": "730cf774673b8447",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "TeamCreate",
+      "sha": "a4d55b21caf11c3a",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "TeamCreate",
+      "sha": "b0c9c9b8b91a5eb7",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "TeamCreate",
+      "sha": "c7d8e2ab73cc0747",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "TeamDelete",
+      "sha": "49fb47b04ffc401b",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "TeamDelete",
+      "sha": "a4d55b21caf11c3a",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "TeamDelete",
+      "sha": "c7d8e2ab73cc0747",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "team_name",
+      "sha": "730cf774673b8447",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "team_name",
+      "sha": "a4d55b21caf11c3a",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/migration-v1-to-v2.md",
+      "token": "team_name",
+      "sha": "c7d8e2ab73cc0747",
+      "reason": "v1 에서 무엇을 걷어내야 하는지 알려주는 마이그레이션 가이드. 대상을 이름으로 지목해야 한다."
+    },
+    {
+      "path": "docs/quickstart.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "982177d0876529de",
+      "reason": "「이 플래그를 봤다면 그건 v1 문서다」 — 독자가 낡은 문서를 알아보는 표식. 이름을 못 적으면 알아볼 수가 없다."
+    },
+    {
+      "path": "hooks/detect-v1-artifacts.sh",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "14110dcd54861564",
+      "reason": "세션 시작 시 v1 잔재를 탐지하는 훅. 찾으려는 문자열을 스스로 들고 있어야 한다."
+    },
+    {
+      "path": "hooks/detect-v1-artifacts.sh",
+      "token": "TeamCreate",
+      "sha": "14110dcd54861564",
+      "reason": "세션 시작 시 v1 잔재를 탐지하는 훅. 찾으려는 문자열을 스스로 들고 있어야 한다."
+    },
+    {
+      "path": "hooks/detect-v1-artifacts.sh",
+      "token": "TeamDelete",
+      "sha": "14110dcd54861564",
+      "reason": "세션 시작 시 v1 잔재를 탐지하는 훅. 찾으려는 문자열을 스스로 들고 있어야 한다."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "b7a6623d9c702187",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamCreate",
+      "sha": "34a025fc4e0b21a5",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamCreate",
+      "sha": "41bc1565ea453372",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamCreate",
+      "sha": "9dcbd9ed30f06628",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamCreate",
+      "sha": "b7a6623d9c702187",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamCreate",
+      "sha": "bb2329fb09df343c",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamCreate",
+      "sha": "da8a6835e0016bd7",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamDelete",
+      "sha": "41bc1565ea453372",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamDelete",
+      "sha": "b7a6623d9c702187",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "TeamDelete",
+      "sha": "bb2329fb09df343c",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "team_name",
+      "sha": "34a025fc4e0b21a5",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/harness_lint.py",
+      "token": "team_name",
+      "sha": "bb2329fb09df343c",
+      "reason": "생성된 하네스에서 같은 API 를 잡는 규칙의 토큰 정의. 검사기 자기참조."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "b7a6623d9c702187",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "TeamCreate",
+      "sha": "7bef16435e5d6cc1",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "TeamCreate",
+      "sha": "b7a6623d9c702187",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "TeamCreate",
+      "sha": "bb2329fb09df343c",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "TeamCreate",
+      "sha": "d2eb65e2d4d72954",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "TeamDelete",
+      "sha": "b7a6623d9c702187",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "TeamDelete",
+      "sha": "bb2329fb09df343c",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "scripts/validate_repository.py",
+      "token": "team_name",
+      "sha": "bb2329fb09df343c",
+      "reason": "이 파일이 그 토큰 목록을 «소유» 한다. 검사기가 자기 규칙을 적을 수 없으면 규칙이 존재할 수 없다."
+    },
+    {
+      "path": "skills/evolve/SKILL.md",
+      "token": "TeamCreate",
+      "sha": "f79b0487dc17af4e",
+      "reason": "하네스 진화 시 v1 잔재를 찾는 지시문."
+    },
+    {
+      "path": "skills/evolve/SKILL.md",
+      "token": "TeamDelete",
+      "sha": "f79b0487dc17af4e",
+      "reason": "하네스 진화 시 v1 잔재를 찾는 지시문."
+    },
+    {
+      "path": "skills/harness/SKILL.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "282e75e98b3a4719",
+      "reason": "팩토리가 v1 하네스를 감지하는 Phase 0-3 지시문. 탐지 대상을 지목한다."
+    },
+    {
+      "path": "skills/harness/SKILL.md",
+      "token": "TeamCreate",
+      "sha": "196de5fd0ae15947",
+      "reason": "팩토리가 v1 하네스를 감지하는 Phase 0-3 지시문. 탐지 대상을 지목한다."
+    },
+    {
+      "path": "skills/harness/SKILL.md",
+      "token": "TeamCreate",
+      "sha": "282e75e98b3a4719",
+      "reason": "팩토리가 v1 하네스를 감지하는 Phase 0-3 지시문. 탐지 대상을 지목한다."
+    },
+    {
+      "path": "skills/harness/SKILL.md",
+      "token": "TeamDelete",
+      "sha": "196de5fd0ae15947",
+      "reason": "팩토리가 v1 하네스를 감지하는 Phase 0-3 지시문. 탐지 대상을 지목한다."
+    },
+    {
+      "path": "skills/harness/SKILL.md",
+      "token": "TeamDelete",
+      "sha": "282e75e98b3a4719",
+      "reason": "팩토리가 v1 하네스를 감지하는 Phase 0-3 지시문. 탐지 대상을 지목한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+      "sha": "766d39115c6e3bbe",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "TeamCreate",
+      "sha": "139779c19823e4ae",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "TeamCreate",
+      "sha": "17df0e38ca882838",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "TeamCreate",
+      "sha": "ac5f7c98a68974d3",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "TeamDelete",
+      "sha": "17df0e38ca882838",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "TeamDelete",
+      "sha": "ac3ca25e999c0230",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "TeamDelete",
+      "sha": "ac5f7c98a68974d3",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/execution-modes.md",
+      "token": "team_name",
+      "sha": "139779c19823e4ae",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/orchestrator-template.md",
+      "token": "TeamCreate",
+      "sha": "5508891beb0c408c",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/orchestrator-template.md",
+      "token": "TeamCreate",
+      "sha": "863e2ce3084a6c89",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/orchestrator-template.md",
+      "token": "TeamDelete",
+      "sha": "5508891beb0c408c",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/orchestrator-template.md",
+      "token": "TeamDelete",
+      "sha": "863e2ce3084a6c89",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/orchestrator-template.md",
+      "token": "team_name",
+      "sha": "863e2ce3084a6c89",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/skill-writing-guide.md",
+      "token": "TeamCreate",
+      "sha": "581d116517adf7a0",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "skills/harness/references/skill-writing-guide.md",
+      "token": "TeamDelete",
+      "sha": "581d116517adf7a0",
+      "reason": "v1 → v2 마이그레이션과 실행 모드 설명. 사라진 프리미티브를 이름으로 대조한다."
+    },
+    {
+      "path": "tests/guardrail/cases/dead-api.md.fixture",
+      "token": "TeamCreate",
+      "sha": "612f9d1fa63cbecb",
+      "reason": "결함 주입 픽스처 — 지시문을 담는 것이 이 파일의 목적이다. 규칙이 잡아야 하는 «양성 사례»."
+    },
+    {
+      "path": "tests/guardrail/cases/dead-api.md.fixture",
+      "token": "team_name",
+      "sha": "612f9d1fa63cbecb",
+      "reason": "결함 주입 픽스처 — 지시문을 담는 것이 이 파일의 목적이다. 규칙이 잡아야 하는 «양성 사례»."
+    },
+    {
+      "path": "tests/guardrail/cases/dead-api.yml.fixture",
+      "token": "TeamCreate",
+      "sha": "b2db9e1b234eb359",
+      "reason": "결함 주입 픽스처 — 지시문을 담는 것이 이 파일의 목적이다. 규칙이 잡아야 하는 «양성 사례»."
+    },
+    {
+      "path": "tests/guardrail/cases/dead-api.yml.fixture",
+      "token": "team_name",
+      "sha": "b2db9e1b234eb359",
+      "reason": "결함 주입 픽스처 — 지시문을 담는 것이 이 파일의 목적이다. 규칙이 잡아야 하는 «양성 사례»."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "TeamCreate",
+      "sha": "5cfb5b3a1635c2a8",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "TeamCreate",
+      "sha": "648e0e5ebe5376a0",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "TeamCreate",
+      "sha": "7a38b1cfc8906953",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "TeamCreate",
+      "sha": "adbaaf8b54a1832a",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "TeamCreate",
+      "sha": "b002eb139cf841a0",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "TeamCreate",
+      "sha": "c39ed1e5ac44f503",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "team_name",
+      "sha": "2ea3dccf18477784",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "team_name",
+      "sha": "5cfb5b3a1635c2a8",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "team_name",
+      "sha": "7a38b1cfc8906953",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "team_name",
+      "sha": "a9161ec405966a6a",
+      "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    }
+  ]
+}

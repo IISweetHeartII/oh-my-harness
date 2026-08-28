@@ -404,43 +404,48 @@ def rule_orphan_agents(h: Harness, out: list[Finding]) -> None:
     This is the check that answers 'you generated twenty-seven agents — which of
     them ever runs?'. An agent no orchestrator references is cost with no path
     to value; a referenced agent that does not exist is a runtime failure.
+
+    Only a real call counts. A name in a documentation table is not wiring in
+    this runtime — and the fallbacks that used to accept `` `name` ``, `@name`
+    and a bare `agent: "name"` meant an agent stayed "referenced" by a row in a
+    table it was never called from. Both the pilot and an adversarial review
+    found that independently. Mentions are still counted, but only to make the
+    finding say something useful.
     """
     if not h.agents:
         return
     defined = {h.agent_name(p) for p in h.agents}
     referenced: set[str] = set()
+    mentions: dict[str, int] = {}
+
     for p in h.orchestrators:
         text = p.read_text(encoding="utf-8")
-        if p not in h.workflows:
-            for a, b in SUBAGENT_REF_RE.findall(text):
-                referenced.add(a or b)
         if p in h.workflows:
-            # A commented-out call is not a call. Without this, an agent stays
-            # "referenced" by a line someone disabled months ago — measured, and
-            # it is the same substring-instead-of-structure mistake as the rest.
+            # Workflow scripts are code: comments are not calls.
             text = strip_js_comments(text)
             for a, b in SUBAGENT_REF_RE.findall(text):
                 referenced.add(a or b)
-            # Workflow scripts are code, so the prose fallbacks below do not
-            # apply: a backtick is a template literal, not a mention, and `@name`
-            # is a decorator or an email. Only the call syntax above counts here.
-            # Accepting a template literal would mark an agent as wired in
-            # because its name appeared in a log message.
-            continue
-        # 이전에는 이름이 본문에 «단어» 로 나오기만 하면 호출로 쳤다. 이름이
-        # `build`·`review` 같은 일상어면 "we should build the binary" 한 줄에
-        # 고아가 사라진다. 호출 문법으로만 인정한다.
+        else:
+            # In a skill, a call is `subagent_type: "name"` **inside** a balanced
+            # Agent(...)/Task(...) span. The same literal sitting in a table row
+            # is documentation.
+            spans = call_spans(text)
+            for m in re.finditer(r"""subagent_type\s*:\s*["']([A-Za-z0-9_-]+)["']""", text):
+                if any(a <= m.start() <= b for a, b in spans):
+                    referenced.add(m.group(1))
         for name in defined:
-            if re.search(rf"""(?:subagent_type|agentType|agent)\s*[:=]\s*["']{re.escape(name)}["']"""
-                         rf"""|@{re.escape(name)}\b|`{re.escape(name)}`""", text):
-                referenced.add(name)
+            mentions[name] = mentions.get(name, 0) + len(
+                re.findall(rf"(?<![A-Za-z0-9_-]){re.escape(name)}(?![A-Za-z0-9_-])", text))
 
     by_name = {h.agent_name(p): h.rel(p) for p in h.agents}
     global_names = user_agent_names()
     for name in sorted(defined - referenced):
+        seen = mentions.get(name, 0)
+        detail = (f"mentioned {seen} time(s) but never called" if seen
+                  else "no skill or workflow references this agent")
         out.append(Finding("orphan-agents", by_name.get(name, f".claude/agents/{name}.md"),
-                           "no skill or workflow references this agent — "
-                           "delete it or wire it in"))
+                           f"{detail} — a name in a table is not wiring. "
+                           f"Call it with Agent(subagent_type: \"{name}\") or delete it"))
     for name in sorted(referenced - defined):
         # 빌트인 타입과 유저 스코프 전역 에이전트는 프로젝트에 정의가 없는 것이
         # 정상이다. 그걸 «정의 없음» 으로 잡으면 전역 에이전트를 쓰는 하네스가

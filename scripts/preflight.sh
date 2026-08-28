@@ -14,7 +14,16 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 fail=0
-run() { printf '\n== %s\n' "$1"; shift; "$@" || fail=1; }
+
+# 이 스크립트가 «몇 단계를 돌아야 하는가». 한 줄을 지우면 개수가 어긋나 실패한다.
+#
+# 왜 필요한가 (2026-08-27 실측): self-test 호출 줄을 지우고 판정기까지 깨뜨렸는데
+# preflight 가 exit 0 을 냈다. 게이트를 세워 놓고 «그 게이트를 부르는 줄» 은
+# 아무도 안 지키고 있었다. 검사를 지우면 알아야 한다.
+STAGES_EXPECTED=7
+stages_run=0
+run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }
+stage() { printf '\n== %s\n' "$1"; stages_run=$((stages_run + 1)); }
 
 # 판정기부터 시험한다. 이게 틀리면 그 아래 «ok» 전부가 거짓말이고, 실제로
 # `verdict()` 의 exit-2 보호를 지우면 자기시험만 실패하고 preflight 는 통과했다 —
@@ -25,13 +34,13 @@ run "guardrail suite"   python3 tests/guardrail/run_guardrail.py
 run "reference harness" python3 scripts/harness_lint.py tests/fixtures/clean-harness
 
 # 하네스가 없는 곳에 대고 돌리면 «깨끗함» 이 아니라 «잴 것이 없음»(2) 이어야 한다.
-printf '\n== nothing-to-lint returns 2, not 0\n'
+stage "nothing-to-lint returns 2, not 0"
 empty=$(mktemp -d)
 python3 scripts/harness_lint.py "$empty" >/dev/null 2>&1
 rc=$?; rmdir "$empty"
 if [ "$rc" = 2 ]; then echo "  ok  exit 2"; else echo "  FAIL exit $rc"; fail=1; fi
 
-printf '\n== every JSON parses\n'
+stage "every JSON parses"
 python3 - <<'PY' || fail=1
 import json, sys
 from pathlib import Path
@@ -48,7 +57,7 @@ if bad:
 print('  ok  all JSON files parse')
 PY
 
-printf '\n== no merge conflict markers\n'
+stage "no merge conflict markers"
 python3 - <<'PY' || fail=1
 import sys
 from pathlib import Path
@@ -74,5 +83,13 @@ if offenders:
 print('  ok  no merge conflict markers')
 PY
 
-[ $fail -eq 0 ] && { echo; echo "preflight: all gates green"; } || { echo; echo "preflight: FAILED — do not push"; }
+if [ "$stages_run" -ne "$STAGES_EXPECTED" ]; then
+  echo
+  echo "preflight: ran $stages_run stages but $STAGES_EXPECTED are declared —"
+  echo "  a stage was removed or added without updating STAGES_EXPECTED."
+  fail=1
+fi
+
+[ $fail -eq 0 ] && { echo; echo "preflight: all gates green ($stages_run stages)"; } \
+  || { echo; echo "preflight: FAILED — do not push"; }
 exit $fail

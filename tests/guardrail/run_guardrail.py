@@ -225,6 +225,32 @@ def break_ci_preflight_shell_comment(repo: Path) -> str:
     return "the real call commented out behind a placeholder command"
 
 
+def break_preflight_stage_removed(repo: Path) -> str:
+    """Delete the line that runs the judge's self-test.
+
+    This exact removal, together with a broken verdict(), produced exit 0 —
+    the gates were all present and the line calling one of them was not.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    line = 'run "guardrail self-test" python3 tests/guardrail/run_guardrail.py --self-test\n'
+    if line not in text:
+        raise AssertionError("preflight.sh no longer runs the self-test the way this case expects")
+    p.write_text(text.replace(line, "", 1), encoding="utf-8")
+    return "preflight no longer running the judge's self-test"
+
+
+def break_preflight_stage_swapped(repo: Path) -> str:
+    """Keep the stage count but make the stage do nothing."""
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    old = 'run "guardrail self-test" python3 tests/guardrail/run_guardrail.py --self-test'
+    if old not in text:
+        raise AssertionError("preflight.sh no longer runs the self-test the way this case expects")
+    p.write_text(text.replace(old, 'run "guardrail self-test" echo skipping', 1), encoding="utf-8")
+    return "a preflight stage replaced by a no-op that keeps the count right"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -256,6 +282,8 @@ CASES = {
     "readme-rule-docs": break_readme_section_count,
     "readme-rule-name": break_readme_rule_name,
     "ci-preflight-shell-comment": break_ci_preflight_shell_comment,
+    "preflight-stages": break_preflight_stage_removed,
+    "preflight-stage-swapped": break_preflight_stage_swapped,
     "ci-runs-preflight": break_ci_runs_preflight,
     "ci-preflight-comment-only": break_ci_preflight_comment_only,
 }
@@ -431,6 +459,38 @@ def hl_dead_api_in_workflow(h: Path) -> str:
     return "a workflow calling the removed TeamCreate API"
 
 
+def _ghost_plus_skill_line(h: Path, line: str) -> None:
+    """An agent nothing calls, plus one line in the orchestrator that names it."""
+    ghost = h / ".claude" / "agents" / "billing-ghost.md"
+    ghost.write_text((h / ".claude" / "agents" / "billing-analyst.md").read_text()
+                     .replace("billing-analyst", "billing-ghost"))
+    skill = h / ".claude" / "skills" / "build" / "SKILL.md"
+    with skill.open("a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
+def hl_orphan_table_backtick(h: Path) -> str:
+    """A row in a documentation table is not wiring in this runtime."""
+    _ghost_plus_skill_line(h, "\n| `billing-ghost` | reviews the totals |\n")
+    return "an agent named only by a backtick in a table"
+
+
+def hl_orphan_at_mention(h: Path) -> str:
+    _ghost_plus_skill_line(h, "\nHand the result to @billing-ghost when the sweep ends.\n")
+    return "an agent named only by an @mention"
+
+
+def hl_orphan_agent_key(h: Path) -> str:
+    _ghost_plus_skill_line(h, '\nExample config: `agent: "billing-ghost"`\n')
+    return 'an agent named only by a bare agent: "name" example'
+
+
+def hl_orphan_bare_subagent_type(h: Path) -> str:
+    """The call's argument, sitting outside any call."""
+    _ghost_plus_skill_line(h, '\n| argument | `subagent_type: "billing-ghost"` |\n')
+    return "an agent named only by subagent_type outside any Agent(...) call"
+
+
 LINT_CASES = {
     "agent-frontmatter": hl_agent_frontmatter,
     "agent-naming": hl_agent_naming,
@@ -449,6 +509,10 @@ LINT_CASES = {
     "orphan-agents-template-literal": hl_orphan_workflow_template_literal,
     "orphan-agents-commented-call": hl_orphan_commented_call,
     "dead-api-workflow": hl_dead_api_in_workflow,
+    "orphan-agents-table-backtick": hl_orphan_table_backtick,
+    "orphan-agents-at-mention": hl_orphan_at_mention,
+    "orphan-agents-agent-key": hl_orphan_agent_key,
+    "orphan-agents-bare-subagent-type": hl_orphan_bare_subagent_type,
 }
 
 # case name -> the rule it actually exercises, for the cases that are extra
@@ -460,6 +524,10 @@ LINT_ALIASES = {
     "orphan-agents-template-literal": "orphan-agents",
     "orphan-agents-commented-call": "orphan-agents",
     "dead-api-workflow": "dead-api",
+    "orphan-agents-table-backtick": "orphan-agents",
+    "orphan-agents-at-mention": "orphan-agents",
+    "orphan-agents-agent-key": "orphan-agents",
+    "orphan-agents-bare-subagent-type": "orphan-agents",
 }
 
 
@@ -775,6 +843,7 @@ def main() -> int:
                "ci-preflight-comment-only": "ci-runs-preflight",
                "readme-rule-docs": "lint-rule-docs",
                "readme-rule-name": "lint-rule-docs",
+               "preflight-stage-swapped": "preflight-stages",
                "ci-preflight-shell-comment": "ci-runs-preflight"}
     uncovered = sorted(set(known) - set(CASES) - set(ALIASES.values()))
     if uncovered:

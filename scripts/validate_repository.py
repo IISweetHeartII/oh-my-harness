@@ -18,6 +18,7 @@ fail is not a gate.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -33,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # there once and its quoted code examples tripped `dead-api` and `change-notice` —
 # the gates were right about the text and wrong about the file being ours.
 # Operational scratch is not repository content.
-EXCLUDED_PARTS = {".git", "node_modules", ".omc"}
+EXCLUDED_PARTS = {".git", "node_modules", ".omc", ".omx"}
 # The whole tests/ tree holds deliberately broken fixtures. Scanning it would
 # make the main run fail on files whose entire purpose is to be wrong.
 TESTS_DIR = ROOT / "tests"
@@ -65,23 +66,13 @@ CHANGELOG_RELEASE_RE = re.compile(r"^##\s*\[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 # APIs removed from Claude Code 2.1.178. Referencing them as an instruction
 # silently produces a harness that does not do what its own docs claim, because
 # a missing tool makes the model improvise rather than error.
-DEAD_API_TOKENS = ["TeamCreate", "TeamDelete", "team_name", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"]
-# A line that says the API is gone is documentation, not an instruction.
-DEAD_API_NEGATIONS = [
-    "removed", "remove", "no longer", "does not exist", "deprecated", "legacy",
-    "gone", "dropped", "drop", "delete", "deleted",
-    "제거", "없다", "없습니다", "존재하지 않", "삭제", "소멸", "금지", "잔재", "v1",
-    "削除", "存在しません", "排除", "禁止", "不要",
-]
-# Whole files whose subject *is* the removed API. A migration guide has to name
-# what it migrates away from, and a changelog has to say what it removed.
-# Keeping these out of the scan is what keeps the gate's false-positive rate at
-# zero — a check that cries wolf gets switched off.
-DEAD_API_EXEMPT_FILES = {
-    "docs/migration-v1-to-v2.md",
-    "CHANGELOG.md",
-    "docs/ATTRIBUTION.md",
-}
+# 제거된 API 의 고유 식별자. 대소문자를 무시한다 — 이 이름들은 Claude Code 고유라
+# 다른 뜻으로 쓰일 여지가 없다.
+DEAD_API_TOKENS = ["TeamCreate", "TeamDelete", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"]
+# `team_name` 은 평범한 인자명이다(스포츠·조직 관리 도메인). Claude 문맥이 같은 줄에
+# 있을 때만 대상으로 삼는다 — 단독으로 잡으면 정상 하네스를 거부한다.
+DEAD_API_CONTEXTUAL = {"team_name": ("TeamCreate", "TeamDelete", "Agent(", "subagent_type")}
+DEAD_API_ALLOWLIST = ROOT / "docs" / "dead-api-allowlist.json"
 
 CHANGE_NOTICE_MARKERS = ("Modified from revfactory/harness", "Apache-2.0")
 DERIVED_MANIFEST = ROOT / "docs" / "derived-files.json"
@@ -273,21 +264,122 @@ def check_link_existence(errors: list[str]) -> None:
                 errors.append(f"{rel(md)} links to a missing local path: {raw_url}")
 
 
+def first_party_text_files() -> list[Path]:
+    """Every file this repository owns and that is readable as text.
+
+    Scanning by extension meant `.sh`, `.py`, `.json` and `.ts` were invisible,
+    so a removed API could sit in a code comment and the gate reported clean.
+    Ownership is the honest boundary: what git tracks plus what is new and not
+    ignored, minus what we did not write (vendor, build output) and runtime
+    scratch. Binary files drop out by failing to decode.
+    """
+    out: list[Path] = []
+    for args in (["git", "ls-files", "-z"],
+                 ["git", "ls-files", "-z", "--others", "--exclude-standard"]):
+        res = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, check=False)
+        for name in res.stdout.split("\0"):
+            if not name:
+                continue
+            path = ROOT / name
+            if not path.is_file():
+                continue
+            if any(part in EXCLUDED_PARTS or part in {"vendor", "dist", "build"}
+                   for part in path.parts):
+                continue
+            out.append(path)
+    return sorted(set(out))
+
+
+def _line_key(line: str) -> str:
+    """Identify an occurrence by its content, not its line number.
+
+    A line number moves when anything above it is edited, so an exemption keyed
+    on it would silently start covering a different line. Keyed on the text, an
+    edit makes the exemption stale — which is the correct outcome: the reason
+    was written about the old wording.
+    """
+    return hashlib.sha256(re.sub(r"\s+", " ", line).strip().encode("utf-8")).hexdigest()[:16]
+
+
+def dead_api_hits(path: Path) -> list[tuple[int, str, str]]:
+    """(lineno, token, line) for every removed-API occurrence in one file."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return []                      # binary or unreadable: not first-party text
+    found = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        lowered = line.lower()
+        for token in DEAD_API_TOKENS:
+            if token.lower() in lowered:
+                found.append((lineno, token, line))
+        for token, context in DEAD_API_CONTEXTUAL.items():
+            if token in line and any(c in line for c in context):
+                found.append((lineno, token, line))
+    return found
+
+
 def check_dead_api(errors: list[str]) -> None:
-    """Flag removed-API tokens used as instructions rather than as history."""
-    for md in scanned_text():
-        if rel(md) in DEAD_API_EXEMPT_FILES:
+    """No removed-API identifier appears unless that occurrence is justified.
+
+    The rule used to try to tell an instruction from a description, using a list
+    of negation words. That is a meaning question and a word list does not close
+    it: `TeamCreate was the original coordination API.` was rejected as an
+    instruction, while `teamcreate()` passed because the match was
+    case-sensitive. Whole-file exemptions made it worse — three files were
+    exempt regardless of what they later grew to contain.
+
+    So the rule no longer guesses. Every occurrence fails unless the allowlist
+    justifies *that occurrence*, keyed by path + token + the line's own hash.
+    Change the line and the exemption goes stale, because the reason was written
+    about the old wording.
+    """
+    allow: dict[str, dict] = {}
+    if DEAD_API_ALLOWLIST.is_file():
+        raw = load_json(DEAD_API_ALLOWLIST, errors)
+        if raw is None:
+            return
+        for entry in raw.get("allow", []):
+            allow[f"{entry['path']}|{entry['token']}|{entry['sha']}"] = entry
+
+    owned = first_party_text_files()
+    if not owned:
+        # git 이 아무것도 못 돌려주면 «전부 깨끗하다» 가 아니라 «무엇이 우리 것인지
+        # 모른다» 다. 0개를 스캔하고 통과하면 최악의 경우가 가장 조용해진다.
+        errors.append("cannot determine which files this repository owns "
+                      "(git ls-files returned nothing) — the scan did not run")
+        return
+
+    seen: set[str] = set()
+    for path in owned:
+        # 장부 자신은 면제 대상을 «이름으로» 적어야 하므로 토큰을 담을 수밖에 없다.
+        # 이건 판단이 아니라 구조다 — 다른 파일과 달리 대안이 없다.
+        if path == DEAD_API_ALLOWLIST:
             continue
-        for lineno, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1):
-            hits = [t for t in DEAD_API_TOKENS if t in line]
-            if not hits:
+        for lineno, token, line in dead_api_hits(path):
+            key = f"{rel(path)}|{token}|{_line_key(line)}"
+            entry = allow.get(key)
+            if entry is None:
+                errors.append(
+                    f"{rel(path)}:{lineno} contains removed API {token} with no justification. "
+                    f"Delete it, or add to {rel(DEAD_API_ALLOWLIST)}: "
+                    f'{{"path": "{rel(path)}", "token": "{token}", '
+                    f'"sha": "{_line_key(line)}", "reason": "<why this line must exist>"}}'
+                )
                 continue
-            lowered = line.lower()
-            if any(neg.lower() in lowered for neg in DEAD_API_NEGATIONS):
-                continue
+            seen.add(key)
+            if not str(entry.get("reason", "")).strip() or "TODO" in str(entry.get("reason")):
+                errors.append(f"{rel(path)}:{lineno} is allowlisted for {token} "
+                              f"with no real reason — write why this line must exist")
+
+    # An exemption whose line is gone or reworded is stale. Leaving it in place
+    # would quietly pre-approve whatever text lands on that key next.
+    for key, entry in allow.items():
+        if key not in seen:
             errors.append(
-                f"{rel(md)}:{lineno} references removed API {', '.join(hits)} "
-                f"as an instruction (add the removal context, or delete the line)"
+                f"{rel(DEAD_API_ALLOWLIST)} still exempts {entry['token']} in "
+                f"{entry['path']} (sha {entry['sha']}), but that line no longer exists "
+                f"as written — remove the entry or re-justify the new wording"
             )
 
 
@@ -502,6 +594,91 @@ def check_size_budget(errors: list[str]) -> None:
             errors.append(f"{rel(ref)} is {n} lines (budget {REFERENCE_MAX_LINES})")
 
 
+# preflight 가 «반드시 실행해야 하는» 것들. 개수 세기(preflight 안)와 이 목록(밖)이
+# 서로를 받친다 — 하나를 지우면 개수가 어긋나고, 다른 것으로 바꿔치기하면 이 목록이 잡는다.
+REQUIRED_PREFLIGHT_CALLS = [
+    ("tests/guardrail/run_guardrail.py", "--self-test"),   # 판정기 자신을 먼저 시험
+    ("scripts/validate_repository.py", None),              # 저장소 게이트
+    ("tests/guardrail/run_guardrail.py", None),            # 가드레일 스위트
+    ("scripts/harness_lint.py", None),                     # 참조 하네스
+]
+
+
+def _preflight_commands() -> list[str]:
+    """The commands preflight.sh actually executes.
+
+    `run "label" cmd args...` lines, not the whole file — a mention in a comment
+    is not an invocation. Same mistake as the CI gate, one level in.
+    """
+    text = (ROOT / "scripts" / "preflight.sh").read_text(encoding="utf-8")
+    out = []
+    for line in text.splitlines():
+        m = re.match(r'^\s*run\s+"[^"]*"\s+(.*)$', line)
+        if m:
+            out.append(_strip_shell_comments(m.group(1)).strip())
+    return [c for c in out if c]
+
+
+def check_preflight_stages(errors: list[str]) -> None:
+    """Every gate this repository owns is actually invoked by preflight.sh.
+
+    Removing the self-test line and breaking the judge produced exit 0 — the
+    gates existed, and the line that ran one of them did not. A check nobody
+    calls is not a check, and nothing was watching the calls.
+    """
+    commands = _preflight_commands()
+    if not commands:
+        errors.append("scripts/preflight.sh has no `run \"...\" <command>` stages")
+        return
+    for script, flag in REQUIRED_PREFLIGHT_CALLS:
+        matches = [c for c in commands if _invokes(c, script)]
+        if flag is not None:
+            matches = [c for c in matches if flag in c.split()]
+        if not matches:
+            want = f"{script} {flag}" if flag else script
+            errors.append(f"scripts/preflight.sh never runs {want} — "
+                          f"that gate exists but nothing calls it")
+    # 개수 선언이 실제 단계 수와 맞는지도 본다 — 선언만 고치고 단계를 지우는 우회를 막는다
+    text = (ROOT / "scripts" / "preflight.sh").read_text(encoding="utf-8")
+    m = re.search(r"^STAGES_EXPECTED=(\d+)", text, re.M)
+    if not m:
+        errors.append("scripts/preflight.sh no longer declares STAGES_EXPECTED")
+    else:
+        declared = int(m.group(1))
+        actual = len(commands) + len(re.findall(r'^\s*stage\s+"', text, re.M))
+        if declared != actual:
+            errors.append(f"scripts/preflight.sh declares STAGES_EXPECTED={declared} "
+                          f"but has {actual} stages")
+
+
+# 셸에서 스크립트가 «실행되는» 형태. `echo X` 는 X 를 출력할 뿐 실행하지 않는다.
+SHELL_RUNNERS = {
+    "bash", "sh", "zsh", "source", ".", "exec", "command", "time", "sudo", "env",
+    # 인터프리터도 실행자다. 이걸 빼놨더니 `python3 scripts/x.py` 를 «실행 아님» 으로
+    # 읽어, 멀쩡한 preflight 를 「아무것도 안 부른다」고 보고했다 — 거짓양성 넷.
+    "python", "python3", "node", "deno", "bun", "ruby", "perl", "uv", "uvx", "npx",
+}
+
+
+def _invokes(command: str, script: str) -> bool:
+    """Is `script` actually executed by this shell snippet, not merely named?
+
+    `run: echo scripts/preflight.sh` mentions it and runs nothing. Deciding
+    that with `script in command` is the substring mistake yet again — the
+    question is a position in the command, not a presence in the string.
+    """
+    for stmt in re.split(r"[\n;]|&&|\|\||\|", command):
+        toks = stmt.split()
+        # skip leading VAR=value assignments and runner words
+        i = 0
+        while i < len(toks) and (re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", toks[i])
+                                 or toks[i] in SHELL_RUNNERS or toks[i].startswith("-")):
+            i += 1
+        if i < len(toks) and toks[i].lstrip("./") == script.lstrip("./"):
+            return True
+    return False
+
+
 def _strip_shell_comments(body: str) -> str:
     """Drop `#` comments from a shell snippet.
 
@@ -567,7 +744,7 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
     if not commands:
         errors.append("validation.yml has no run: step that executes anything")
         return
-    if not any("scripts/preflight.sh" in c for c in commands):
+    if not any(_invokes(c, "scripts/preflight.sh") for c in commands):
         errors.append("no run: step in validation.yml executes scripts/preflight.sh — "
                       "CI and the local gate can now disagree "
                       f"(steps found: {'; '.join(c.splitlines()[0][:60] for c in commands)})")
@@ -663,6 +840,7 @@ CHECKS = {
     "change-notice": check_change_notice,
     "lint-rule-docs": check_lint_rule_docs,
     "ci-runs-preflight": check_ci_runs_preflight,
+    "preflight-stages": check_preflight_stages,
 }
 
 
