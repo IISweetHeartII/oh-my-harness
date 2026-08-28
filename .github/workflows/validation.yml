@@ -37,6 +37,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      # 저장소 게이트가 이 워크플로우를 «구조로» 읽는다. 파서가 없으면 그 게이트는
+      # 실패로 닫히므로(그게 맞다) 여기서 설치한다.
+      - name: install the YAML parser the workflow gate needs
+        run: python3 -m pip install --quiet pyyaml
+
       # preflight 의 «자기 보고» 를 믿지 않는 한 스텝. 스크립트 끝을 `exit 0` 으로
       # 바꾸면 모든 게이트가 빨개져도 rc=0 이 나간다 — 스크립트는 자기 종료코드를
       # 검사할 수 없다. 그래서 그 한 가지만 밖에서 다시 묻는다.

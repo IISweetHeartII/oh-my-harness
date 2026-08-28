@@ -23,7 +23,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import subprocess
 import tempfile
 import shutil
@@ -651,10 +650,14 @@ REQUIRED_STAGE_CALLABLES = ("stage_nothing_to_lint", "stage_json_parses",
 # CI 는 이 줄들을 «글자 그대로, 각각 한 번씩, 이 순서로» 가져야 한다.
 # YAML 의미를 해석하지 않는다 — 우리가 쓴 파일의 줄을 고정할 뿐이다. 접는 스칼라
 # 안에 같은 줄을 숨겨도 «두 번» 이 되어 걸린다.
-CI_REQUIRED_LINES = [
-    "        run: python3 scripts/validate_repository.py --only preflight-stages",
-    "        run: bash scripts/preflight.sh",
+# CI 가 «단계로서» 실행해야 하는 명령. 줄 위치가 아니라 YAML 구조로 찾는다.
+CI_REQUIRED_STEP_RUNS = [
+    "python3 scripts/validate_repository.py --only preflight-stages",
+    "bash scripts/preflight.sh",
 ]
+# 프로브 신호를 CI 가 켜면 프로브가 꺼진다. 이름이 워크플로우 어디에 나오든 막는다.
+CI_FORBIDDEN_TEXT = ("OH_MY_HARNESS_PROBE", ".guardrail-nested")
+
 CI_FORBIDDEN_MENTIONS = ("scripts/validate_repository.py",
                          "tests/guardrail/run_guardrail.py",
                          "scripts/harness_lint.py",
@@ -674,13 +677,17 @@ def _stage_declarations(errors: list[str] | None = None
     stages no-ops. Whether the declared gates actually run is a question about
     behaviour, and `_preflight_actually_enforces` answers it by running them.
     """
-    src = (ROOT / "scripts" / "preflight_runner.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
+    return _stage_declarations_from(ROOT / "scripts" / "preflight_runner.py", errors)
+
+
+def _stage_declarations_from(path: Path, errors: list[str] | None = None
+                             ) -> tuple[list[tuple[str, ...]], list[str], int]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     assigns = [n for n in tree.body if isinstance(n, ast.Assign)
                and any(getattr(x, "id", None) == "STAGES" for x in n.targets)]
     if len(assigns) != 1 or not isinstance(assigns[0].value, ast.List):
         if errors is not None:
-            errors.append("preflight_runner.py must assign STAGES exactly once, as a "
+            errors.append("the stage file must assign STAGES exactly once, as a "
                           "list literal — anything else and this gate is reading a "
                           "program that is not the one that runs")
         return [], [], 0
@@ -707,61 +714,106 @@ def _stage_declarations(errors: list[str] | None = None
     return argvs, callables, len(node.elts)
 
 
-def _preflight_actually_enforces(errors: list[str]) -> None:
-    """Run the entry point on a copy with one judge broken and require it to fail.
+# 프로브가 자식 실행에게 «너는 프로브 안이다» 를 알리는 방법. 파일이 아니라 환경변수다 —
+# 파일이면 CI 가 앞 단계에서 `touch` 한 줄로 프로브를 통째로 끌 수 있었다(리뷰 13).
+PROBE_ENV = "OH_MY_HARNESS_PROBE"
 
-    This replaces four rules that pinned the *shape* of the runner's source —
-    a loop over STAGES, a call to `action`, a `subprocess.run`, a `return 1`.
-    Shape pinning was wrong in both directions at once: it accepted
+# 프로브가 심는 결함과, 그 결과 «빨개져야 하는» 단계. 나머지 단계는 초록이어야 한다.
+#
+# 왜 여러 개이고 왜 초록도 요구하나: 하나만 깨뜨리면 러너가
+# `if label != "guardrail self-test": continue` 로 그 단계만 돌리고 나머지 일곱을
+# 건너뛸 수 있다(리뷰 13에서 실제로 통과했다). 그리고 프로브라는 걸 알아채고 «항상
+# 실패» 를 흉내 내는 것도 막아야 한다. 빨강과 초록의 «패턴» 을 맞히려면 실제로 재는
+# 수밖에 없다.
+PROBE_EXPECT_RED = ("guardrail self-test", "every JSON parses",
+                    "no merge conflict markers")
 
-        if False:
-            action(); subprocess.run(action); return 1
 
-    (every marker present, nothing executed) and it rejected ordinary
-    refactoring — renaming `action`, extracting a helper, `subprocess.check_call`,
-    `return bool(failed)`. Source text is not behaviour.
-
-    So ask the runner to behave. Break the guardrail's judge in a copy, run
-    `scripts/preflight.sh`, and require a non-zero exit that names that stage.
-    A `main()` that skips its stages, a `STAGES` list emptied through an alias,
-    an argv pointed somewhere else — all of them stop failing, and all of them
-    are caught here without a single rule about how the source must look.
-
-    The copy carries the recursion marker so the inner run skips this probe.
-    """
-    if (ROOT / GUARDRAIL_NEST_MARKER).exists():
-        return                        # already inside a probe; do not recurse
-    judge = Path("tests/guardrail/run_guardrail.py")
+def _plant_probe_defects(copy: Path) -> str | None:
+    """Plant one defect per expected-red stage. Returns a reason if it cannot."""
+    judge = copy / "tests" / "guardrail" / "run_guardrail.py"
     anchor = '    if result.returncode == 0:\n        return "did NOT fail"\n'
+    text = judge.read_text(encoding="utf-8")
+    if anchor not in text:
+        return "the judge's anchor is gone"
+    judge.write_text(text.replace(anchor, "    return None\n" + anchor, 1),
+                     encoding="utf-8")
+    (copy / "docs" / "probe-invalid.json").write_text("{ not json", encoding="utf-8")
+    (copy / "docs" / "probe-conflict.md").write_text(
+        "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> other\n", encoding="utf-8")
+    return None
+
+
+def _preflight_actually_enforces(errors: list[str]) -> None:
+    """Run the entry point on a deliberately broken copy and read every stage.
+
+    This replaces rules that pinned the *shape* of the runner's source. Shape
+    pinning was wrong both ways at once — it accepted `if False: action()`
+    (every marker present, nothing executed) and rejected ordinary refactoring.
+    Source text is not behaviour.
+
+    One planted defect is not enough either: a runner that skips every stage
+    except the one being probed passed that version. So several defects go in
+    at once, in different stages, and the stages that were *not* sabotaged must
+    come back green. Reproducing that pattern requires actually running them —
+    which is the property under test.
+    """
+    if os.environ.get(PROBE_ENV):
+        return                        # already inside a probe; do not recurse
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / "probe"
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(
             ".git", "node_modules", "__pycache__", ".omc", ".omx"))
-        target = copy / judge
-        text = target.read_text(encoding="utf-8")
-        if anchor not in text:
-            errors.append(f"cannot probe whether preflight enforces: the anchor in "
-                          f"{judge} is gone, so this check would prove nothing")
+        # 사본에도 git 이 있어야 한다. 없으면 `dead-api` 가 「무엇이 우리 것인지 모른다」로
+        # 정당하게 빨개지고, 심지도 않은 단계가 빨개져 패턴 판정이 무의미해진다.
+        subprocess.run(["git", "init", "-q"], cwd=copy, capture_output=True, check=False)
+        tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                                 capture_output=True, check=False).stdout
+        subprocess.run(["git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"],
+                       cwd=copy, input=tracked, capture_output=True, check=False)
+        why = _plant_probe_defects(copy)
+        if why:
+            errors.append(f"cannot probe whether preflight enforces: {why}, so this "
+                          f"check would prove nothing")
             return
-        target.write_text(text.replace(anchor, "    return None\n" + anchor, 1),
-                          encoding="utf-8")
-        (copy / GUARDRAIL_NEST_MARKER).write_text("", encoding="utf-8")
-        res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=copy,
-                             capture_output=True, text=True)
+        try:
+            res = subprocess.run(
+                ["bash", "scripts/preflight.sh"], cwd=copy, capture_output=True,
+                text=True, timeout=600,
+                env=dict(os.environ, **{PROBE_ENV: "1"}))
+        except subprocess.TimeoutExpired:
+            errors.append("scripts/preflight.sh did not finish within 600s on a probe "
+                          "copy — a gate that never returns blocks every push")
+            return
     if res.returncode == 0:
-        errors.append("scripts/preflight.sh reported success on a tree whose judge was "
-                      "broken — the stages are declared and something between the "
-                      "declaration and the process exit is not running them")
+        errors.append("scripts/preflight.sh reported success on a tree with planted "
+                      "defects in three stages — something between the stage list and "
+                      "the process exit is not running them")
         return
-    chunk = next((c for c in ("\n" + res.stdout).split("\n== ")
-                  if c.startswith("guardrail self-test")), None)
-    if chunk is None:
-        errors.append("scripts/preflight.sh never reached the 'guardrail self-test' "
-                      "stage with the judge broken")
-    elif "FAIL" not in chunk.upper():
-        errors.append("scripts/preflight.sh went red with the judge broken, but not at "
-                      "the 'guardrail self-test' stage — the red came from elsewhere, "
-                      "so it is not evidence that stage ran")
+    # 단계별 판정은 러너 자신의 요약 줄에서 읽는다. 본문에서 "FAIL" 을 찾으면
+    # 단계마다 실패를 다르게 표현한다는 사실에 걸린다("Invalid JSON:" 처럼).
+    m = re.search(r"^preflight: FAILED[^(]*\((\d+)/(\d+) stages: (.+)\)$",
+                  res.stdout, re.M)
+    if not m:
+        errors.append("scripts/preflight.sh did not report which stages failed — "
+                      "without a per-stage verdict a red run is not evidence that any "
+                      "particular stage ran")
+        return
+    failed = {s.strip() for s in m.group(3).split(",")}
+    ran = {part.partition("\n")[0].strip()
+           for part in ("\n" + res.stdout).split("\n== ")[1:]}
+    missing = [s for s in PROBE_EXPECT_RED if s not in ran]
+    if missing:
+        errors.append(f"these stages never ran on the probe copy: {missing} "
+                      f"(stages seen: {sorted(ran)})")
+        return
+    if failed != set(PROBE_EXPECT_RED):
+        errors.append(
+            f"the probe planted defects in {sorted(PROBE_EXPECT_RED)} and preflight "
+            f"reported {sorted(failed)} as failed. Stages that were sabotaged and came "
+            f"back green are not doing their work; stages that failed with nothing "
+            f"planted mean the run is not reporting per stage, so neither result is "
+            f"evidence.")
 
 
 def check_preflight_stages(errors: list[str]) -> None:
@@ -811,19 +863,11 @@ def check_preflight_stages(errors: list[str]) -> None:
             errors.append(f"preflight_runner.py's STAGES no longer includes {name} — "
                           f"the function may still exist, but nothing runs it")
 
-    # 재귀 표시가 «추적되면» 모든 체크아웃에서 강제 확인이 건너뛰어진다.
-    #
-    # 「존재하면」이 아니라 「추적되면」인 이유: 중첩 실행되는 사본에는 이 파일이
-    # 정당하게 있고(그게 재귀를 끊는 장치다), 거기서 이 게이트가 울면 강제 확인이
-    # «엉뚱한 단계» 에서 빨개져 증거가 못 된다. 추적되지 않은 로컬 파일은 그 사람의
-    # 작업 사본에만 영향을 주고 CI 의 신선 체크아웃에는 없다 — §D-8 에 적었다.
-    if subprocess.run(["git", "ls-files", "--error-unmatch", GUARDRAIL_NEST_MARKER],
-                      cwd=ROOT, capture_output=True).returncode == 0:
-        errors.append(f"{GUARDRAIL_NEST_MARKER} is tracked by git — that file tells the "
-                      f"guardrail it is already inside a preflight run, so the check "
-                      f"that preflight enforces its gates would skip in every "
-                      f"checkout. It belongs only inside a temporary copy.")
-
+    # 프로브 신호를 저장소나 CI 에서 켜면 프로브가 통째로 꺼진다.
+    if (ROOT / ".guardrail-nested").exists():
+        errors.append(".guardrail-nested is a leftover from the old file-based probe "
+                      "signal — delete it; the signal is now an environment variable "
+                      "that a repository file cannot set")
     # 가드레일 스위트의 절이 다 불리는가. 호출 줄 하나를 지우면 그 절이 통째로 안 돈다.
     suite = (ROOT / "tests" / "guardrail" / "run_guardrail.py").read_text(encoding="utf-8")
     called = set(re.findall(r"^\s*(\w+)\(failures, args\.verbose\)", suite, re.M))
@@ -847,88 +891,138 @@ def check_preflight_stages(errors: list[str]) -> None:
 
 
 def check_ci_runs_preflight(errors: list[str]) -> None:
-    """CI runs the entry point, verbatim, and nothing else runs a gate directly.
+    """CI runs the entry point, and something actually starts CI.
 
     v2.7.0 shipped with a failing guardrail because the push command ran one
     gate out of three. preflight.sh exists to stop that, but only while the
-    thing that actually blocks a merge calls it.
+    thing that blocks a merge calls it — and only while something starts it.
 
-    Three earlier versions asked "does this YAML step execute the script" and
-    all three were wrong: reading the file as one string counted a header
-    comment, reading `run:` by name counted an action's `with: run:` input, and
-    folding a `>` scalar turned the command into a shell comment that the
-    parser had already stripped. Interpreting YAML semantics is not the job.
+    Four earlier versions tried to answer this by reading the file as text.
+    All four were wrong, each in a new way: a header comment counted as a
+    step; an action's `with: run:` counted as a step; a `>` fold turned the
+    command into a shell comment; a fake `- name:` inside a job's `name: |2`
+    block put the required lines at what *looked* like step position while the
+    real steps ran `echo`. Text position is not YAML structure.
 
-    So this pins lines in a file we own. Each required line must appear exactly
-    once, in order, spelled exactly. A decoy hidden in a block scalar makes the
-    count two and fails; a wrapper, `|| true`, a Makefile target or a changed
-    `working-directory` simply is not the line. The contract is narrow on
-    purpose — `docs/OPEN-FINDINGS.md` §C-12.
+    So parse it. With the document in hand the questions are direct — which job
+    runs these commands, is that job conditional, do its triggers actually fire
+    — and unrelated jobs get to use `if:` and `shell:` freely, which the text
+    version had to forbid outright.
     """
     wf = ROOT / ".github" / "workflows" / "validation.yml"
     if not wf.is_file():
         errors.append(".github/workflows/validation.yml is missing")
         return
-    lines = [l.rstrip() for l in wf.read_text(encoding="utf-8").splitlines()]
-    code = [(n, l) for n, l in enumerate(lines, 1) if not l.lstrip().startswith("#")]
+    try:
+        import yaml
+    except ImportError:
+        errors.append("PyYAML is not available, so this gate cannot read "
+                      "validation.yml. It fails closed on purpose: an unverified "
+                      "workflow is not a verified one")
+        return
+    try:
+        doc = yaml.safe_load(wf.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        errors.append(f"validation.yml is not valid YAML: {exc}")
+        return
+    if not isinstance(doc, dict):
+        errors.append("validation.yml does not parse to a mapping")
+        return
 
-    # 줄이 «단계 자리에» 있어야 한다. 진짜 단계를 `echo` 로 바꾸고 정규 두 줄을
-    # job-level 블록 스칼라에 한 번씩 심으면 개수도 순서도 맞아 통과했다(리뷰 11).
-    # 우리 워크플로우에서 실행 단계는 언제나 `- name:` 바로 다음 줄이다.
-    # `code` 는 «주석을 뺀» 목록이라 줄번호와 인덱스가 다르다. 인덱스로 본다.
-    def _at_step_position(i: int) -> bool:
-        for _, line in reversed(code[:i]):
-            if not line.strip():
-                continue
-            return line.startswith("      - name: ")
-        return False
+    # PyYAML reads a bare `on:` key as the boolean True (YAML 1.1).
+    triggers = doc.get("on", doc.get(True))
+    _check_ci_triggers(triggers, errors)
 
-    where = []
-    for want in CI_REQUIRED_LINES:
-        hits = [n for i, (n, l) in enumerate(code)
-                if l == want and _at_step_position(i)]
-        if len(hits) != 1:
-            errors.append(
-                f"validation.yml must contain the line `{want.strip()}` exactly once "
-                f"(found {len(hits)}). CI runs the entry point verbatim — a wrapper, a "
-                f"swallowed exit code or a copy hidden in a block scalar is not it.")
-        where.append(hits[0] if len(hits) == 1 else None)
-    if all(w is not None for w in where) and where != sorted(where):
-        errors.append("validation.yml runs preflight before the integrity check — "
-                      "that step exists to distrust preflight's exit code, so it "
-                      "goes first, as the docs say")
+    raw = wf.read_text(encoding="utf-8")
+    for name in CI_FORBIDDEN_TEXT:
+        if name in raw:
+            errors.append(f"validation.yml mentions {name} — that switches off the check "
+                          f"that preflight actually enforces its gates, and CI must not "
+                          f"be where it gets set")
 
-    # 조건부 실행과 실패 무시는 «단계를 지우지 않고» 단계를 끄는 방법이다.
-    # `if: ${{ false }}` 를 job 에 붙이면 위 두 줄이 그대로 있는데 아무것도 안 돈다.
-    for n, line in code:
-        stripped = line.strip()
-        if re.match(r"""^["']?(if|continue-on-error)["']?\s*:""", stripped):
-            errors.append(f"validation.yml:{n} uses `{stripped}` — a condition or an "
-                          f"ignored failure switches the gate off while every required "
-                          f"line stays exactly where it was")
-
-    # `defaults: run: shell: true {0}` 는 모든 `run:` 을 «성공하는 no-op» 으로 바꾼다.
-    # 필수 줄은 제자리에 있고 아무것도 실행되지 않는다(리뷰 12).
-    for n, line in code:
-        if re.match(r"""^["']?(defaults|shell)["']?\s*:""", line.strip()):
-            errors.append(f"validation.yml:{n} sets `{line.strip()}` — a custom shell "
-                          f"or a defaults block can turn every `run:` into a no-op that "
-                          f"succeeds, with all the required lines still in place")
-    # 그리고 트리거. `on:` 을 `workflow_dispatch` 만 남기면 PR·push 에서 아무것도 안 돈다.
-    joined = "\n".join(l for _, l in code)
-    for trigger in ("pull_request:", "push:"):
-        if not re.search(rf"^\s+{re.escape(trigger)}\s*$", joined, re.M):
-            errors.append(f"validation.yml does not trigger on {trigger[:-1]} — the gate "
-                          f"exists and no pull request or push runs it")
-
-    for n, line in code:
-        if line in CI_REQUIRED_LINES:
+    jobs = doc.get("jobs") or {}
+    gate_jobs = []
+    for name, job in jobs.items():
+        if not isinstance(job, dict):
             continue
-        for name in CI_FORBIDDEN_MENTIONS:
-            if name in line:
-                errors.append(f"validation.yml:{n} mentions {name} outside the two "
-                              f"canonical lines (`{line.strip()}`) — re-listing the "
-                              f"gates here is how this file and preflight drift apart")
+        runs = [str(s.get("run", "")).strip()
+                for s in (job.get("steps") or []) if isinstance(s, dict)]
+        if all(want in runs for want in CI_REQUIRED_STEP_RUNS):
+            gate_jobs.append((name, job, runs))
+    if not gate_jobs:
+        errors.append(
+            f"no job in validation.yml runs both {CI_REQUIRED_STEP_RUNS!r} as its own "
+            f"`run:` steps — CI must run the entry point verbatim, and the integrity "
+            f"check that does not trust its exit code")
+        return
+
+    for name, job, runs in gate_jobs:
+        order = [runs.index(w) for w in CI_REQUIRED_STEP_RUNS]
+        if order != sorted(order):
+            errors.append(f"job {name!r} runs preflight before the integrity check — "
+                          f"that step exists to distrust preflight's exit code")
+        if "if" in job:
+            errors.append(f"job {name!r} is conditional (`if: {job['if']}`) — the gate "
+                          f"can then be skipped with every required line in place")
+        if job.get("continue-on-error"):
+            errors.append(f"job {name!r} sets continue-on-error — a red gate would not "
+                          f"block anything")
+        if "defaults" in job or "defaults" in doc:
+            errors.append(f"a `defaults:` block applies to job {name!r} — a custom shell "
+                          f"can turn every `run:` into a no-op that succeeds")
+        for step in job.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            run = str(step.get("run", "")).strip()
+            if run in CI_REQUIRED_STEP_RUNS:
+                if "if" in step or step.get("continue-on-error"):
+                    errors.append(f"the gate step in job {name!r} is conditional or "
+                                  f"ignores failure")
+                if "shell" in step:
+                    errors.append(f"the gate step in job {name!r} sets a custom shell — "
+                                  f"`shell: true {{0}}` succeeds without running anything")
+                continue
+            for forbidden in CI_FORBIDDEN_MENTIONS:
+                if forbidden in run:
+                    errors.append(f"job {name!r} runs {forbidden} outside the two "
+                                  f"canonical steps — re-listing the gates here is how "
+                                  f"this file and preflight drift apart")
+
+
+def _check_ci_triggers(triggers: object, errors: list[str]) -> None:
+    """Something has to start the workflow, on the branch that matters.
+
+    Leaving only `workflow_dispatch`, or filtering `branches` down to one that
+    never exists, or `paths-ignore: ["**"]` — each leaves every required line
+    exactly where it was and no run ever happens.
+    """
+    if isinstance(triggers, str):
+        triggers = {triggers: None}
+    elif isinstance(triggers, list):
+        triggers = {k: None for k in triggers}
+    if not isinstance(triggers, dict):
+        errors.append("validation.yml has no readable `on:` triggers")
+        return
+    for event in ("pull_request", "push"):
+        if event not in triggers:
+            errors.append(f"validation.yml does not trigger on {event} — the gate exists "
+                          f"and nothing starts it")
+            continue
+        cfg = triggers[event] or {}
+        if not isinstance(cfg, dict):
+            continue
+        for key in ("paths", "paths-ignore"):
+            if key in cfg:
+                errors.append(f"validation.yml filters {event} by {key} — the gate must "
+                              f"run for every change, not only for some paths")
+        branches = cfg.get("branches")
+        if branches is not None and not any(
+                b in ("main", "**", "*") for b in (branches or [])):
+            errors.append(f"validation.yml restricts {event} to {branches} — the gate "
+                          f"never runs on the branch it is meant to protect")
+        if "branches-ignore" in cfg:
+            errors.append(f"validation.yml uses branches-ignore for {event} — that can "
+                          f"exclude the branch this gate protects")
 
 
 def check_lint_rule_docs(errors: list[str]) -> None:
@@ -1046,26 +1140,16 @@ def self_test() -> int:
     and three false readings. Data is easier to be right about, but only if the
     reading is pinned.
     """
-    import ast as _ast
     fail = 0
 
     def read(src: str):
-        tree = _ast.parse(src)
-        node = next((n.value for n in tree.body
-                     if isinstance(n, _ast.Assign)
-                     and any(getattr(x, "id", None) == "STAGES" for x in n.targets)), None)
-        if not isinstance(node, _ast.List):
-            return [], []
-        argvs, calls = [], []
-        for elt in node.elts:
-            if not isinstance(elt, _ast.Tuple) or len(elt.elts) != 2:
-                continue
-            action = elt.elts[1]
-            if isinstance(action, _ast.List):
-                argvs.append(tuple(a.value for a in action.elts
-                                   if isinstance(a, _ast.Constant)))
-            elif isinstance(action, _ast.Name):
-                calls.append(action.id)
+        """운영 파서를 그대로 부른다. 자기시험이 «사본» 을 시험하면 시험한 적이 없다."""
+        tmp = ROOT / "scripts" / ".self-test-runner.py"
+        tmp.write_text(src, encoding="utf-8")
+        try:
+            argvs, calls, _ = _stage_declarations_from(tmp)
+        finally:
+            tmp.unlink(missing_ok=True)
         return argvs, calls
 
     for src, want_argv, want_calls in STAGES_SELF_TEST:
@@ -1085,9 +1169,9 @@ def self_test() -> int:
     else:
         print(f"FAIL the real runner declares only {total} stages", file=sys.stderr)
         fail = 1
-    if len(CI_REQUIRED_LINES) == 2 and len(REQUIRED_STAGE_COMMANDS) >= 4:
+    if len(CI_REQUIRED_STEP_RUNS) == 2 and len(REQUIRED_STAGE_COMMANDS) >= 4:
         print(f"  ok  contracts declare {len(REQUIRED_STAGE_COMMANDS)} runner commands "
-              f"and {len(CI_REQUIRED_LINES)} CI lines")
+              f"and {len(CI_REQUIRED_STEP_RUNS)} CI steps")
     else:
         print("FAIL the required-command contracts were emptied", file=sys.stderr)
         fail = 1

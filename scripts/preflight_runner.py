@@ -21,7 +21,6 @@ there is no shell left to subvert.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 import tempfile
@@ -105,10 +104,16 @@ def main() -> int:
     failed = []
     for label, action in STAGES:
         print(f"\n== {label}", flush=True)
-        if callable(action):
-            ok = action()
-        else:
-            ok = subprocess.run(action, cwd=ROOT).returncode == 0
+        try:
+            if callable(action):
+                ok = action()
+            else:
+                ok = subprocess.run(action, cwd=ROOT).returncode == 0
+        except Exception as exc:                      # noqa: BLE001 — 진단용
+            # 예외로 프로세스가 죽으면 «나머지 단계가 안 돈 것» 과 «이 단계가 실패한 것» 을
+            # 구분할 수 없다. 실패로 집계하고 계속 간다.
+            print(f"  FAIL {type(exc).__name__}: {exc}")
+            ok = False
         if not ok:
             failed.append(label)
     print()

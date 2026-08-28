@@ -450,6 +450,71 @@ def break_ci_job_disabled(repo: Path) -> str:
     return "the whole job switched off by a condition, every line still in place"
 
 
+def break_runner_selective(repo: Path) -> str:
+    """Announce every stage, execute only the one a single-defect probe watched.
+
+    This is why the probe plants defects in several stages and requires the
+    untouched ones to come back green: with one defect, this runner reproduced
+    the expected answer while seven gates never ran.
+    """
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    anchor = '        print(f"\\n== {label}", flush=True)\n'
+    if anchor not in text:
+        raise AssertionError("the runner no longer announces stages this way")
+    p.write_text(text.replace(
+        anchor, anchor + '        if label != "guardrail self-test":\n'
+                         "            continue\n", 1), encoding="utf-8")
+    return "a runner that executes only the stage a probe was expected to watch"
+
+
+def break_ci_yaml_fake_step(repo: Path) -> str:
+    """The required lines inside a job `name:` block, the real steps echoing.
+
+    Text-position reading called this a step. A YAML parser calls it a string.
+    """
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    integrity = "        run: python3 scripts/validate_repository.py --only preflight-stages\n"
+    preflight = "        run: bash scripts/preflight.sh\n"
+    marker = "    runs-on: ubuntu-latest\n"
+    for needed in (integrity, preflight, marker):
+        if needed not in text:
+            raise AssertionError("validation.yml is not the shape this case rewrites")
+    text = text.replace(integrity, "        run: echo integrity skipped\n", 1)
+    text = text.replace(preflight, "        run: echo preflight skipped\n", 1)
+    text = text.replace(marker, "    name: |2\n      - name: gate\n" + integrity
+                        + "      - name: gate2\n" + preflight + marker, 1)
+    wf.write_text(text, encoding="utf-8")
+    return "the gate commands parked inside a job name, the real steps echoing"
+
+
+def break_ci_branch_filter(repo: Path) -> str:
+    """Keep both triggers and point them at a branch that does not exist."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    old = "on:\n  pull_request:\n  push:\n    branches:\n      - main\n"
+    if old not in text:
+        raise AssertionError("validation.yml no longer declares its triggers this way")
+    wf.write_text(text.replace(
+        old, "on:\n  pull_request:\n    branches:\n      - never-run-this\n"
+             "  push:\n    branches:\n      - never-run-this\n", 1), encoding="utf-8")
+    return "both triggers restricted to a branch nothing ever pushes"
+
+
+def break_ci_probe_switch(repo: Path) -> str:
+    """CI setting the probe's own signal — the behavioural check turns off."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    marker = "    runs-on: ubuntu-latest\n"
+    if marker not in text:
+        raise AssertionError("validation.yml no longer declares runs-on the expected way")
+    wf.write_text(text.replace(
+        marker, marker + '    env:\n      OH_MY_HARNESS_PROBE: "1"\n', 1),
+        encoding="utf-8")
+    return "CI switching off the probe that proves preflight enforces its gates"
+
+
 def break_runner_dead_code(repo: Path) -> str:
     """A main() carrying every marker a shape check looked for, inside `if False`.
 
@@ -542,7 +607,7 @@ def break_ci_triggers_removed(repo: Path) -> str:
 
 
 def break_nest_marker_tracked(repo: Path) -> str:
-    """Commit the recursion marker — every checkout then skips the enforcement.
+    """A leftover `.guardrail-nested` from the old file-based signal.
 
     This used to be an environment variable, and a variable can be set from
     outside the file the gate reads: a composite action writing `$GITHUB_ENV`,
@@ -651,6 +716,10 @@ CASES = {
     "runner-argv-head": break_runner_argv_head,
     "ci-step-replaced-by-decoy": break_ci_step_replaced_by_decoy,
     "ci-job-disabled": break_ci_job_disabled,
+    "runner-selective": break_runner_selective,
+    "ci-yaml-fake-step": break_ci_yaml_fake_step,
+    "ci-branch-filter": break_ci_branch_filter,
+    "ci-probe-switch": break_ci_probe_switch,
     "runner-dead-code": break_runner_dead_code,
     "runner-alias-mutation": break_runner_alias_mutation,
     "preflight-unicode-break": break_preflight_unicode_break,
@@ -1107,7 +1176,7 @@ def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
 # 환경변수는 워크플로우 밖에서도 켤 수 있어(composite action·`$GITHUB_ENV`·
 # preflight 안의 export) 강제 확인을 조용히 끌 수 있었다. `preflight-stages` 가
 # 이 파일이 저장소에 있으면 거부한다.
-NEST_MARKER = ".guardrail-nested"
+NEST_ENV = "OH_MY_HARNESS_PROBE"   # 파일이 아니라 환경변수 — 리뷰 13
 
 # (무엇을 깨뜨리나, 파일, 앵커, 대체) — 각각 «그 단계만» 잡는 결함이다.
 PREFLIGHT_ENFORCEMENT = [
@@ -1119,8 +1188,9 @@ PREFLIGHT_ENFORCEMENT = [
     ("the validator's stage reader",
      "validator self-test",
      "scripts/validate_repository.py",
-     "    tree = ast.parse(src)\n",
-     "    return [], [], 0\n    tree = ast.parse(src)\n"),
+     "    tree = ast.parse(path.read_text(encoding=\"utf-8\"))\n",
+     "    return [], [], 0\n"
+     "    tree = ast.parse(path.read_text(encoding=\"utf-8\"))\n"),
 ]
 
 
@@ -1192,7 +1262,7 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
     The pristine half needs no separate run: this suite *is* a preflight stage,
     so a green outer preflight already proves the clean tree passes.
     """
-    if (ROOT / NEST_MARKER).exists():
+    if os.environ.get(NEST_ENV):
         print("  --  preflight enforcement: skipped (already inside a preflight run)")
         return
     # 목록이 «있는지» 는 밖에서 세지만, 그 사이에 비워지는 길이 있다
@@ -1209,9 +1279,9 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         clean = Path(tmp) / "declared-vs-run"
         copy_tree(clean)
-        (clean / NEST_MARKER).write_text("", encoding="utf-8")
         res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=clean,
-                             capture_output=True, text=True)
+                             capture_output=True, text=True,
+                             env=dict(os.environ, **{NEST_ENV: "1"}))
         declared = [m.group(1) for m in re.finditer(
             r'^\s{4}\("([^"]+)",', (clean / "scripts" / "preflight_runner.py")
             .read_text(encoding="utf-8"), re.M)]
@@ -1239,14 +1309,15 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
             target.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
             # a mutation that does not parse is a syntax error, not a verdict
             syn = subprocess.run([sys.executable, "-m", "py_compile", str(target)],
-                                 capture_output=True, text=True)
+                                 capture_output=True, text=True,
+                                 env=dict(os.environ, **{NEST_ENV: "1"}))
             if syn.returncode != 0:
                 failures.append(f"preflight enforcement: breaking {label} left the file "
                                 f"unparseable — {syn.stderr.strip().splitlines()[-1][:100]}")
                 continue
-            (broken / NEST_MARKER).write_text("", encoding="utf-8")
             res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=broken,
-                                 capture_output=True, text=True)
+                                 capture_output=True, text=True,
+                                 env=dict(os.environ, **{NEST_ENV: "1"}))
             if res.returncode == 0:
                 failures.append(
                     f"preflight enforcement: {label} was broken and "
@@ -1382,7 +1453,7 @@ def main() -> int:
     # 프로브 안이다. 프로브가 재는 것은 «1단계가 실제로 돌았는가» 뿐이고, 이 스위트를
     # 한 번 더 도는 데 10초가 든다. 자기시험(--self-test)은 위에서 이미 지나갔으므로
     # 프로브가 보려는 것은 그대로 측정된다.
-    if (ROOT / NEST_MARKER).exists():
+    if os.environ.get(NEST_ENV):
         print("guardrail suite: skipped (inside a preflight probe)")
         return 0
 
@@ -1408,6 +1479,10 @@ def main() -> int:
                "runner-argv-head": "preflight-stages",
                "ci-step-replaced-by-decoy": "ci-runs-preflight",
                "ci-job-disabled": "ci-runs-preflight",
+               "runner-selective": "preflight-stages",
+               "ci-yaml-fake-step": "ci-runs-preflight",
+               "ci-branch-filter": "ci-runs-preflight",
+               "ci-probe-switch": "ci-runs-preflight",
                "runner-dead-code": "preflight-stages",
                "runner-alias-mutation": "preflight-stages",
                "preflight-unicode-break": "preflight-stages",
