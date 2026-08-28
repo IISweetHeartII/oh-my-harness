@@ -463,6 +463,24 @@ def break_nest_marker_tracked(repo: Path) -> str:
     return "the recursion marker committed into the repository"
 
 
+def break_ci_preflight_action_input(repo: Path) -> str:
+    """The command moved into an action's `with:` input — it never runs.
+
+    A `run:` key is only a step when it is the step's own key. Read by name
+    alone, an action input satisfied the required-step check while CI executed
+    nothing.
+    """
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    line = "        run: bash scripts/preflight.sh\n"
+    if line not in text:
+        raise AssertionError("validation.yml no longer runs preflight the way this case expects")
+    wf.write_text(text.replace(
+        line, "        uses: actions/github-script@v7\n        with:\n"
+              "          run: bash scripts/preflight.sh\n", 1), encoding="utf-8")
+    return "the gate command demoted to an action input that never executes"
+
+
 def break_ci_preflight_swallowed(repo: Path) -> str:
     """CI runs the gate and throws its verdict away."""
     wf = repo / ".github" / "workflows" / "validation.yml"
@@ -574,6 +592,7 @@ CASES = {
     "preflight-fail-reset": break_preflight_fail_reset,
     "preflight-trap": break_preflight_trap,
     "ci-preflight-swallowed": break_ci_preflight_swallowed,
+    "ci-preflight-action-input": break_ci_preflight_action_input,
     "preflight-runner-continuation": break_preflight_runner_continuation,
     "preflight-shadow-subshell": break_preflight_shadow_subshell,
     "guardrail-section-removed": break_guardrail_section,
@@ -1037,8 +1056,9 @@ PREFLIGHT_ENFORCEMENT = [
     ("the validator's workflow parser",
      "validator self-test",
      "scripts/validate_repository.py",
-     "    lines, out, i = text.splitlines(), [], 0\n",
-     "    return []\n    lines, out, i = text.splitlines(), [], 0\n"),
+     "    lines, out, i, item_key_indent = text.splitlines(), [], 0, None\n",
+     "    return []\n"
+     "    lines, out, i, item_key_indent = text.splitlines(), [], 0, None\n"),
 ]
 
 
@@ -1298,6 +1318,7 @@ def main() -> int:
                "preflight-fail-reset": "preflight-stages",
                "preflight-trap": "preflight-stages",
                "ci-preflight-swallowed": "ci-runs-preflight",
+               "ci-preflight-action-input": "ci-runs-preflight",
                "preflight-runner-continuation": "preflight-stages",
                "preflight-shadow-subshell": "preflight-stages",
                "dead-api-stale-allowlist": "dead-api",

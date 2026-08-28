@@ -836,13 +836,23 @@ def _workflow_run_commands(text: str) -> list[str]:
     `echo validation-skipped` passed a gate whose whole job was to check that it
     runs preflight. A comment is not an execution step.
     """
-    lines, out, i = text.splitlines(), [], 0
+    lines, out, i, item_key_indent = text.splitlines(), [], 0, None
     while i < len(lines):
-        m = re.match(r"^(\s*)-?\s*run:\s*(.*)$", lines[i])
+        # 어떤 들여쓰기가 «단계의 키» 인지 기억한다. `- uses:` 아래 `with:` 안의
+        # `run:` 은 액션 «입력» 이지 실행 단계가 아닌데, 들여쓰기를 안 보면 단계로
+        # 세어져 요구 목록을 거짓으로 만족시킨다(실측).
+        item = re.match(r"^(\s*)-\s+\S", lines[i])
+        if item:
+            item_key_indent = len(item.group(1)) + 2
+        m = re.match(r"^(\s*)(-\s+)?run:\s*(.*)$", lines[i])
         if not m:
             i += 1
             continue
-        indent, rest = len(m.group(1)), m.group(2).strip()
+        key_indent = len(m.group(1)) + (len(m.group(2)) if m.group(2) else 0)
+        if m.group(2) is None and key_indent != item_key_indent:
+            i += 1                      # not a step's own key
+            continue
+        indent, rest = len(m.group(1)), m.group(3).strip()
         if rest and rest[0] not in "|>":
             out.append(_strip_shell_comments(rest))
             i += 1
@@ -1016,6 +1026,11 @@ WORKFLOW_SELF_TEST = [
     # 헤더 주석은 단계가 아니다
     ("# bash scripts/preflight.sh\njobs:\n  a:\n    steps:\n"
      "      - run: echo hi\n", ["echo hi"]),
+    # 액션의 «입력» 으로 들어간 run 은 실행 단계가 아니다
+    ("      - uses: x/y@v1\n        with:\n          run: bash scripts/preflight.sh\n", []),
+    # 같은 항목의 형제 키로 온 run 은 단계다
+    ("      - name: gate\n        run: bash scripts/preflight.sh\n",
+     ["bash scripts/preflight.sh"]),
 ]
 
 
