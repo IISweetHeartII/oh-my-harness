@@ -7,6 +7,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 hooks=$(git rev-parse --git-path hooks)
 mkdir -p "$hooks"
+# 이미 있는 훅을 말없이 덮지 않는다 — 남의 설정일 수 있다.
+if [ -e "$hooks/pre-push" ] && ! grep -q "scripts/preflight.sh" "$hooks/pre-push"; then
+  cp "$hooks/pre-push" "$hooks/pre-push.backup-$(date +%Y%m%d%H%M%S)"
+  echo "backed up the existing pre-push hook"
+fi
 cat > "$hooks/pre-push" <<'SH'
 #!/usr/bin/env sh
 # 무결성 확인이 먼저다 — preflight 자신이 `exit 0` 으로 바뀌었으면 그 뒤 결과는

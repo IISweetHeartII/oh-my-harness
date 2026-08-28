@@ -396,6 +396,81 @@ def break_guardrail_section(repo: Path) -> str:
     return "a whole guardrail section that nothing calls any more"
 
 
+def break_preflight_exit_before(repo: Path) -> str:
+    """`exit 0` above the stages, with the real `exit $fail` still below it.
+
+    Asking only whether the line exists let this through: the script returns
+    before any stage runs, and the canonical last line is untouched.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    call = 'run "guardrail self-test"'
+    if call not in text:
+        raise AssertionError("preflight.sh no longer has the self-test call line")
+    p.write_text(text.replace(call, "exit 0\n" + call, 1), encoding="utf-8")
+    return "an early `exit 0` with the real exit line still at the bottom"
+
+
+def break_preflight_function_keyword(repo: Path) -> str:
+    """`function run { ... }` — bash's other definition syntax.
+
+    The duplicate/shadow checks only recognised `name()`, so the canonical
+    definition could stay in place while this one actually ran.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    call = 'run "guardrail self-test"'
+    if call not in text:
+        raise AssertionError("preflight.sh no longer has the self-test call line")
+    p.write_text(text.replace(
+        call, 'function run { stages_run=$((stages_run + 1)); return 0; }\n' + call, 1),
+        encoding="utf-8")
+    return "a `function run { }` no-op overriding the canonical runner"
+
+
+def break_enforcement_emptied(repo: Path) -> str:
+    """The enforcement section still runs, with nothing left to measure."""
+    p = repo / "tests" / "guardrail" / "run_guardrail.py"
+    text = p.read_text(encoding="utf-8")
+    start = text.index("PREFLIGHT_ENFORCEMENT = [")
+    end = text.index("\n]\n", start) + len("\n]\n")
+    p.write_text(text[:start] + "PREFLIGHT_ENFORCEMENT = [\n]\n" + text[end:],
+                 encoding="utf-8")
+    return "an emptied enforcement list — the section runs and proves nothing"
+
+
+def break_ci_nest_job_env(repo: Path) -> str:
+    """The switch set at job level instead of inside a run: step."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    marker = "    runs-on: ubuntu-latest\n"
+    if marker not in text:
+        raise AssertionError("validation.yml no longer declares runs-on the expected way")
+    wf.write_text(text.replace(
+        marker, marker + '    env:\n      OH_MY_HARNESS_GUARDRAIL_NEST: "1"\n', 1),
+        encoding="utf-8")
+    return "the enforcement switch set as a job-level env instead of in a run: step"
+
+
+def break_dead_api_duplicate_line(repo: Path) -> str:
+    """A second, byte-identical occurrence of an allowlisted line.
+
+    Keyed on path + token + line-hash alone, the two occurrences shared one
+    key, so approving the first quietly approved the second.
+    """
+    p = repo / "docs" / "dead-api-allowlist.json"
+    entry = json.loads(p.read_text(encoding="utf-8"))["allow"][0]
+    target = repo / entry["path"]
+    text = target.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    hit = next((i for i, l in enumerate(lines) if entry["token"] in l), None)
+    if hit is None:
+        raise AssertionError(f"{entry['path']} no longer contains {entry['token']}")
+    lines.insert(hit + 1, lines[hit])
+    target.write_text("".join(lines), encoding="utf-8")
+    return "a second identical occurrence riding on the first one's exemption"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -441,6 +516,11 @@ CASES = {
     "ci-integrity-step": break_ci_integrity_step,
     "ci-nest-switch": break_ci_nest_switch,
     "guardrail-section-removed": break_guardrail_section,
+    "preflight-exit-before": break_preflight_exit_before,
+    "preflight-function-keyword": break_preflight_function_keyword,
+    "enforcement-emptied": break_enforcement_emptied,
+    "ci-nest-job-env": break_ci_nest_job_env,
+    "dead-api-duplicate-line": break_dead_api_duplicate_line,
 }
 
 
@@ -888,10 +968,12 @@ NEST_ENV = "OH_MY_HARNESS_GUARDRAIL_NEST"
 # (무엇을 깨뜨리나, 파일, 앵커, 대체) — 각각 «그 단계만» 잡는 결함이다.
 PREFLIGHT_ENFORCEMENT = [
     ("the guardrail's judge",
+     "guardrail self-test",
      "tests/guardrail/run_guardrail.py",
      '    if result.returncode == 0:\n        return "did NOT fail"\n',
      '    return None\n    if result.returncode == 0:\n        return "did NOT fail"\n'),
     ("the validator's _invokes",
+     "validator self-test",
      "scripts/validate_repository.py",
      "    parts = re.split(",
      "    return script in command\n    parts = re.split("),
@@ -920,7 +1002,7 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
         print("  --  preflight enforcement: skipped (already inside a preflight run)")
         return
     with tempfile.TemporaryDirectory() as tmp:
-        for i, (label, relpath, anchor, replacement) in enumerate(PREFLIGHT_ENFORCEMENT):
+        for i, (label, stage, relpath, anchor, replacement) in enumerate(PREFLIGHT_ENFORCEMENT):
             broken = Path(tmp) / f"enforce-{i}"
             copy_tree(broken)
             target = broken / relpath
@@ -947,8 +1029,21 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
                     f"its stages but does not enforce them")
                 if verbose:
                     print(res.stdout[-2000:])
+                continue
+            # 빨간불이 «그 단계» 에서 나왔는지까지 본다. 아무 데서나 빨개진 것을
+            # 증거로 세면 무관한 실패가 이 케이스를 영원히 통과시킨다.
+            chunks = ("\n" + res.stdout).split("\n== ")
+            chunk = next((c for c in chunks if c.startswith(stage)), None)
+            if chunk is None:
+                failures.append(f"preflight enforcement: the '{stage}' stage never ran "
+                                f"while {label} was broken")
+            elif "FAIL" not in chunk.upper():
+                failures.append(f"preflight enforcement: preflight went red with {label} "
+                                f"broken, but the '{stage}' stage passed — the red came "
+                                f"from somewhere else and proves nothing")
             else:
-                print(f"  ok  preflight enforces:    red when {label} is broken")
+                print(f"  ok  preflight enforces:    '{stage}' goes red when "
+                      f"{label} is broken")
 
 
 def verdict(result: subprocess.CompletedProcess, gate: str) -> str | None:
@@ -1001,7 +1096,8 @@ def copy_tree(dest: Path) -> None:
     """
     shutil.copytree(
         ROOT, dest,
-        ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__"),
+        ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__",
+                                      ".omc", ".omx"),
     )
     subprocess.run(["git", "init", "-q"], cwd=dest, check=False, capture_output=True)
     tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
@@ -1072,6 +1168,11 @@ def main() -> int:
                "preflight-run-tampered": "preflight-stages",
                "preflight-exit-code": "preflight-stages",
                "guardrail-section-removed": "preflight-stages",
+               "preflight-exit-before": "preflight-stages",
+               "preflight-function-keyword": "preflight-stages",
+               "enforcement-emptied": "preflight-stages",
+               "ci-nest-job-env": "ci-runs-preflight",
+               "dead-api-duplicate-line": "dead-api",
                "preflight-runner-duplicate": "preflight-stages",
                "preflight-runner-shadow": "preflight-stages",
                "ci-integrity-step": "ci-runs-preflight",
@@ -1089,11 +1190,14 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         pristine = Path(tmp) / "pristine"
         copy_tree(pristine)
+        clean_by_gate: dict[str, subprocess.CompletedProcess] = {}
 
         for check, breaker in CASES.items():
             # 1. the pristine tree must pass, or the case proves nothing
             gate = ALIASES.get(check, check)
-            clean = run_check(pristine, gate)
+            if gate not in clean_by_gate:
+                clean_by_gate[gate] = run_check(pristine, gate)
+            clean = clean_by_gate[gate]
             if clean.returncode != 0:
                 failures.append(f"{check}: fails on the pristine tree — cannot prove anything")
             elif gate not in clean.stdout:
