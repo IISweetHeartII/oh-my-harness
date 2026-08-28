@@ -362,21 +362,108 @@ def break_stage_callable_dropped(repo: Path) -> str:
     return "a Python stage removed from STAGES while its function remains"
 
 
-def break_ci_preflight_decoy(repo: Path) -> str:
-    """A byte-identical copy of the required line, hidden where nothing runs it.
+def break_runner_main_gutted(repo: Path) -> str:
+    """`main()` prints the labels and runs nothing.
 
-    An earlier parser read `run:` by name and would have accepted this as the
-    step. Pinning the line by count turns a decoy into two occurrences.
+    STAGES is untouched, the summary still says "all gates green", and no
+    gate runs. Reading the declaration is not reading the program — this is
+    the one the eleventh review found, with every static check passing.
     """
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    start = text.index("def main() -> int:")
+    p.write_text(text[:start] + (
+        "def main() -> int:\n"
+        "    for label, _action in STAGES:\n"
+        '        print(f"\\n== {label}", flush=True)\n'
+        "    print()\n"
+        '    print(f"preflight: all gates green ({len(STAGES)} stages)")\n'
+        "    return 0\n\n\n"
+        'if __name__ == "__main__":\n'
+        "    sys.exit(main())\n"), encoding="utf-8")
+    return "a main() that announces every stage and executes none"
+
+
+def break_runner_stages_mutated(repo: Path) -> str:
+    """Replace every action with a no-op after STAGES is declared.
+
+    The labels still print in order, so comparing declared labels against the
+    run's headers cannot see it. The declaration has to be the list that runs.
+    """
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    anchor = "def main() -> int:"
+    if anchor not in text:
+        raise AssertionError("the runner has no main() to insert before")
+    p.write_text(text.replace(
+        anchor, "STAGES[:] = [(label, lambda: True) for label, _ in STAGES]\n\n\n"
+                + anchor, 1), encoding="utf-8")
+    return "every stage action swapped for a no-op after the declaration"
+
+
+def break_runner_argv_head(repo: Path) -> str:
+    """Point a stage's argv at something other than the interpreter."""
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    old = '[PY, "tests/guardrail/run_guardrail.py", "--self-test"]'
+    if old not in text:
+        raise AssertionError("the runner no longer declares the self-test stage this way")
+    p.write_text(text.replace("PY = sys.executable",
+                              'PY = sys.executable\nNOOP = "true"', 1)
+                 .replace(old, '[NOOP, "tests/guardrail/run_guardrail.py", "--self-test"]',
+                          1), encoding="utf-8")
+    return "a stage whose argv starts with something that is not the interpreter"
+
+
+def break_preflight_wrapper_continuation(repo: Path) -> str:
+    """A `\\` at the end of the last comment swallows the exec line.
+
+    bash removes the continuation before parsing, so the exec becomes part of
+    the comment and the script runs nothing — while a line-by-line reading
+    still sees the shebang and the exec.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    marker = "# 설치형 pre-push 훅: bash scripts/install-hooks.sh\n"
+    if marker not in text:
+        raise AssertionError("preflight.sh no longer ends its comments this way")
+    p.write_text(text.replace(marker, marker.rstrip("\n") + " \\\n", 1), encoding="utf-8")
+    return "a line continuation that folds the exec line into a comment"
+
+
+def break_ci_step_replaced_by_decoy(repo: Path) -> str:
+    """Real steps replaced by `echo`, canonical lines hidden in a job-level env.
+
+    Counting occurrences is not enough when the decoy *replaces* the real line
+    instead of joining it: each required line still appears exactly once, in
+    order. The line has to be at step position.
+    """
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    marker = "    runs-on: ubuntu-latest\n"
+    integrity = "        run: python3 scripts/validate_repository.py --only preflight-stages\n"
+    preflight = "        run: bash scripts/preflight.sh\n"
+    for needed in (marker, integrity, preflight):
+        if needed not in text:
+            raise AssertionError("validation.yml is not the shape this case rewrites")
+    text = text.replace(integrity, "        run: echo integrity skipped\n", 1)
+    text = text.replace(preflight, "        run: echo preflight skipped\n", 1)
+    text = text.replace(marker, marker + "    env:\n      NOTES: |\n"
+                        + integrity + preflight, 1)
+    wf.write_text(text, encoding="utf-8")
+    return "the real steps replaced by echo, the canonical lines moved into env"
+
+
+def break_ci_job_disabled(repo: Path) -> str:
+    """`if: ${{ false }}` on the job — every required line stays, nothing runs."""
     wf = repo / ".github" / "workflows" / "validation.yml"
     text = wf.read_text(encoding="utf-8")
     marker = "    runs-on: ubuntu-latest\n"
     if marker not in text:
         raise AssertionError("validation.yml no longer declares runs-on the expected way")
-    wf.write_text(text.replace(
-        marker, marker + "    env:\n      NOTES: |\n"
-                "        run: bash scripts/preflight.sh\n", 1), encoding="utf-8")
-    return "a decoy copy of the gate line inside an env block scalar"
+    wf.write_text(text.replace(marker, marker + "    if: ${{ false }}\n", 1),
+                  encoding="utf-8")
+    return "the whole job switched off by a condition, every line still in place"
 
 
 def break_nest_marker_tracked(repo: Path) -> str:
@@ -484,7 +571,12 @@ CASES = {
     "preflight-stage-removed": break_stage_removed,
     "preflight-stage-swapped": break_stage_swapped,
     "preflight-stage-callable-dropped": break_stage_callable_dropped,
-    "ci-preflight-decoy": break_ci_preflight_decoy,
+    "runner-main-gutted": break_runner_main_gutted,
+    "runner-stages-mutated": break_runner_stages_mutated,
+    "runner-argv-head": break_runner_argv_head,
+    "preflight-wrapper-continuation": break_preflight_wrapper_continuation,
+    "ci-step-replaced-by-decoy": break_ci_step_replaced_by_decoy,
+    "ci-job-disabled": break_ci_job_disabled,
     "nest-marker-tracked": break_nest_marker_tracked,
     "ci-preflight-swallowed": break_ci_preflight_swallowed,
     "ci-preflight-action-input": break_ci_preflight_action_input,
@@ -1224,7 +1316,12 @@ def main() -> int:
                "preflight-stage-removed": "preflight-stages",
                "preflight-stage-swapped": "preflight-stages",
                "preflight-stage-callable-dropped": "preflight-stages",
-               "ci-preflight-decoy": "ci-runs-preflight",
+               "runner-main-gutted": "preflight-stages",
+               "runner-stages-mutated": "preflight-stages",
+               "runner-argv-head": "preflight-stages",
+               "preflight-wrapper-continuation": "preflight-stages",
+               "ci-step-replaced-by-decoy": "ci-runs-preflight",
+               "ci-job-disabled": "ci-runs-preflight",
                "nest-marker-tracked": "preflight-stages",
                "ci-preflight-swallowed": "ci-runs-preflight",
                "ci-preflight-action-input": "ci-runs-preflight",

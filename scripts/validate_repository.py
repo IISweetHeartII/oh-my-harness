@@ -660,33 +660,106 @@ CI_FORBIDDEN_MENTIONS = ("scripts/validate_repository.py",
                          "working-directory")
 
 
-def _stage_declarations() -> tuple[list[tuple[str, ...]], list[str], int]:
-    """(argv tails, callable names, total stages) declared in preflight_runner.py.
+def _stage_declarations(errors: list[str] | None = None
+                        ) -> tuple[list[tuple[str, ...]], list[str], int]:
+    """(argv tails, callable names, total) declared in preflight_runner.py.
 
-    Read as a syntax tree, not as text: `STAGES` is data, so ask Python what it
-    says. This is the whole reason the runner is Python — the old shell version
-    had to be *interpreted* to answer the same question, and interpreting shell
-    by regex is how six bypasses got through.
+    Strict on purpose. The first version kept the `ast.Constant` elements and
+    *dropped* everything else, so `[NOOP, "scripts/validate_repository.py"]`
+    read as a real command and `("label", lambda: True)` read as a stage. A
+    reader that discards what it does not understand reports on a program that
+    does not exist. Anything unexpected is an error, not a silent skip.
     """
     src = (ROOT / "scripts" / "preflight_runner.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
-    node = next((n.value for n in tree.body
-                 if isinstance(n, ast.Assign)
-                 and any(getattr(t, "id", None) == "STAGES" for t in n.targets)), None)
-    if not isinstance(node, ast.List):
+    assigns = [n for n in tree.body if isinstance(n, ast.Assign)
+               and any(getattr(x, "id", None) == "STAGES" for x in n.targets)]
+    if len(assigns) != 1 or not isinstance(assigns[0].value, ast.List):
+        if errors is not None:
+            errors.append("preflight_runner.py must assign STAGES exactly once, as a "
+                          "list literal — anything else and this gate is reading a "
+                          "program that is not the one that runs")
         return [], [], 0
+    node = assigns[0].value
+
+    # 선언 뒤에 목록을 바꾸면 정적 판정과 실행이 갈라진다.
+    # `STAGES.clear()` · `STAGES[:] = …` · `STAGES += …` 전부 여기서 걸린다.
+    for n in ast.walk(tree):
+        if n is assigns[0]:
+            continue
+        touched = False
+        if isinstance(n, (ast.AugAssign, ast.AnnAssign)):
+            touched = getattr(n.target, "id", None) == "STAGES"
+        elif isinstance(n, ast.Assign):
+            touched = any(getattr(getattr(x, "value", x), "id", None) == "STAGES"
+                          for x in n.targets)
+        elif isinstance(n, ast.Call):
+            f = n.func
+            touched = (isinstance(f, ast.Attribute)
+                       and getattr(f.value, "id", None) == "STAGES")
+        if touched and errors is not None:
+            errors.append(f"preflight_runner.py line {getattr(n, 'lineno', '?')} changes "
+                          f"STAGES after it is declared — the declaration this gate "
+                          f"reads would no longer be the list that runs")
+
     argvs: list[tuple[str, ...]] = []
     callables: list[str] = []
     for elt in node.elts:
-        if not isinstance(elt, ast.Tuple) or len(elt.elts) != 2:
+        if not isinstance(elt, ast.Tuple) or len(elt.elts) != 2 or \
+                not isinstance(elt.elts[0], ast.Constant):
+            if errors is not None:
+                errors.append("every STAGES entry must be a (label, action) tuple with "
+                              "a literal label")
             continue
         action = elt.elts[1]
         if isinstance(action, ast.List):
-            parts = [a.value for a in action.elts if isinstance(a, ast.Constant)]
-            argvs.append(tuple(parts))
+            if not action.elts or getattr(action.elts[0], "id", None) != "PY":
+                if errors is not None:
+                    errors.append(f"stage {elt.elts[0].value!r} must run PY — an argv "
+                                  f"starting with anything else is a different program")
+                continue
+            rest = action.elts[1:]
+            if not all(isinstance(a, ast.Constant) and isinstance(a.value, str)
+                       for a in rest):
+                if errors is not None:
+                    errors.append(f"stage {elt.elts[0].value!r} builds its argv from "
+                                  f"non-literals — this gate cannot see what it runs")
+                continue
+            argvs.append(tuple(a.value for a in rest))
         elif isinstance(action, ast.Name):
             callables.append(action.id)
+        elif errors is not None:
+            errors.append(f"stage {elt.elts[0].value!r} has an action this gate cannot "
+                          f"read (a lambda or a call) — declare a named function or an "
+                          f"argv list")
     return argvs, callables, len(node.elts)
+
+
+def _main_runs_the_stages(errors: list[str]) -> None:
+    """`main()` must actually execute what STAGES declares.
+
+    Reading the declaration is not reading the program. `main()` was gutted to
+    print the labels and return 0 — every gate silently skipped, the summary
+    still said "all gates green", and this file's static checks all passed,
+    because none of them looked at the engine.
+    """
+    src = (ROOT / "scripts" / "preflight_runner.py").read_text(encoding="utf-8")
+    fn = next((n for n in ast.parse(src).body
+               if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
+    if fn is None:
+        errors.append("preflight_runner.py has no main()")
+        return
+    body = ast.dump(fn)
+    needs = {
+        "a loop over STAGES": "Name(id='STAGES'",
+        "a call to the stage's own function": "Call(func=Name(id='action'",
+        "a subprocess run of the stage's argv": "attr='run'",
+        "a non-zero return when a stage failed": "Constant(value=1)",
+    }
+    for what, marker in needs.items():
+        if marker not in body:
+            errors.append(f"preflight_runner.py's main() no longer contains {what} — "
+                          f"the stages can be declared and never executed")
 
 
 def check_preflight_stages(errors: list[str]) -> None:
@@ -703,7 +776,9 @@ def check_preflight_stages(errors: list[str]) -> None:
     if not wrapper.is_file() or not runner.is_file():
         errors.append("scripts/preflight.sh and scripts/preflight_runner.py must both exist")
         return
-    raw = wrapper.read_text(encoding="utf-8").splitlines()
+    # bash 는 `\` + 개행을 파싱 전에 지운다. 우리도 지운다 — 주석 끝에 `\` 를 붙이면
+    # 그 다음 줄이 주석에 먹혀 exec 가 사라지는데, 줄 단위로 보면 멀쩡해 보인다.
+    raw = wrapper.read_text(encoding="utf-8").replace("\\\n", "").splitlines()
     # 셔뱅은 주석처럼 생겼지만 주석이 아니다 — 어떤 셸이 도는지 정하는 줄이다.
     effective = ([raw[0].rstrip()] if raw and raw[0].startswith("#!") else []) + [
         l.rstrip() for l in raw[1:] if l.strip() and not l.lstrip().startswith("#")]
@@ -712,7 +787,8 @@ def check_preflight_stages(errors: list[str]) -> None:
                       f"want {PREFLIGHT_WRAPPER_LINES}, got {effective}. Anything more "
                       f"is shell that can redefine, short-circuit or swallow a stage.")
 
-    argvs, callables, total = _stage_declarations()
+    _main_runs_the_stages(errors)
+    argvs, callables, total = _stage_declarations(errors)
     if not total:
         errors.append("scripts/preflight_runner.py declares no STAGES list")
         return
@@ -782,9 +858,21 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
     lines = [l.rstrip() for l in wf.read_text(encoding="utf-8").splitlines()]
     code = [(n, l) for n, l in enumerate(lines, 1) if not l.lstrip().startswith("#")]
 
+    # 줄이 «단계 자리에» 있어야 한다. 진짜 단계를 `echo` 로 바꾸고 정규 두 줄을
+    # job-level 블록 스칼라에 한 번씩 심으면 개수도 순서도 맞아 통과했다(리뷰 11).
+    # 우리 워크플로우에서 실행 단계는 언제나 `- name:` 바로 다음 줄이다.
+    # `code` 는 «주석을 뺀» 목록이라 줄번호와 인덱스가 다르다. 인덱스로 본다.
+    def _at_step_position(i: int) -> bool:
+        for _, line in reversed(code[:i]):
+            if not line.strip():
+                continue
+            return line.startswith("      - name: ")
+        return False
+
     where = []
     for want in CI_REQUIRED_LINES:
-        hits = [n for n, l in code if l == want]
+        hits = [n for i, (n, l) in enumerate(code)
+                if l == want and _at_step_position(i)]
         if len(hits) != 1:
             errors.append(
                 f"validation.yml must contain the line `{want.strip()}` exactly once "
@@ -795,6 +883,15 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
         errors.append("validation.yml runs preflight before the integrity check — "
                       "that step exists to distrust preflight's exit code, so it "
                       "goes first, as the docs say")
+
+    # 조건부 실행과 실패 무시는 «단계를 지우지 않고» 단계를 끄는 방법이다.
+    # `if: ${{ false }}` 를 job 에 붙이면 위 두 줄이 그대로 있는데 아무것도 안 돈다.
+    for n, line in code:
+        stripped = line.strip()
+        if stripped.startswith("if:") or stripped.startswith("continue-on-error:"):
+            errors.append(f"validation.yml:{n} uses `{stripped}` — a condition or an "
+                          f"ignored failure switches the gate off while every required "
+                          f"line stays exactly where it was")
 
     for n, line in code:
         if line in CI_REQUIRED_LINES:
