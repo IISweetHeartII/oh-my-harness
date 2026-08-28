@@ -25,6 +25,8 @@ import os
 import re
 import shlex
 import subprocess
+import tempfile
+import shutil
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -664,11 +666,13 @@ def _stage_declarations(errors: list[str] | None = None
                         ) -> tuple[list[tuple[str, ...]], list[str], int]:
     """(argv tails, callable names, total) declared in preflight_runner.py.
 
-    Strict on purpose. The first version kept the `ast.Constant` elements and
-    *dropped* everything else, so `[NOOP, "scripts/validate_repository.py"]`
-    read as a real command and `("label", lambda: True)` read as a stage. A
-    reader that discards what it does not understand reports on a program that
-    does not exist. Anything unexpected is an error, not a silent skip.
+    This reader answers one question — *which gates are declared* — and nothing
+    more. It used to also police how the declaration was written (argv must
+    start with `PY`, no lambdas, no mutation afterwards). Those rules blocked
+    ordinary refactoring and were bypassed anyway: `ALIAS = STAGES; ALIAS[:] =
+    [(l, lambda: True) …]` satisfied every one of them while making all eight
+    stages no-ops. Whether the declared gates actually run is a question about
+    behaviour, and `_preflight_actually_enforces` answers it by running them.
     """
     src = (ROOT / "scripts" / "preflight_runner.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
@@ -682,26 +686,6 @@ def _stage_declarations(errors: list[str] | None = None
         return [], [], 0
     node = assigns[0].value
 
-    # 선언 뒤에 목록을 바꾸면 정적 판정과 실행이 갈라진다.
-    # `STAGES.clear()` · `STAGES[:] = …` · `STAGES += …` 전부 여기서 걸린다.
-    for n in ast.walk(tree):
-        if n is assigns[0]:
-            continue
-        touched = False
-        if isinstance(n, (ast.AugAssign, ast.AnnAssign)):
-            touched = getattr(n.target, "id", None) == "STAGES"
-        elif isinstance(n, ast.Assign):
-            touched = any(getattr(getattr(x, "value", x), "id", None) == "STAGES"
-                          for x in n.targets)
-        elif isinstance(n, ast.Call):
-            f = n.func
-            touched = (isinstance(f, ast.Attribute)
-                       and getattr(f.value, "id", None) == "STAGES")
-        if touched and errors is not None:
-            errors.append(f"preflight_runner.py line {getattr(n, 'lineno', '?')} changes "
-                          f"STAGES after it is declared — the declaration this gate "
-                          f"reads would no longer be the list that runs")
-
     argvs: list[tuple[str, ...]] = []
     callables: list[str] = []
     for elt in node.elts:
@@ -713,53 +697,71 @@ def _stage_declarations(errors: list[str] | None = None
             continue
         action = elt.elts[1]
         if isinstance(action, ast.List):
-            if not action.elts or getattr(action.elts[0], "id", None) != "PY":
-                if errors is not None:
-                    errors.append(f"stage {elt.elts[0].value!r} must run PY — an argv "
-                                  f"starting with anything else is a different program")
-                continue
-            rest = action.elts[1:]
-            if not all(isinstance(a, ast.Constant) and isinstance(a.value, str)
-                       for a in rest):
-                if errors is not None:
-                    errors.append(f"stage {elt.elts[0].value!r} builds its argv from "
-                                  f"non-literals — this gate cannot see what it runs")
-                continue
-            argvs.append(tuple(a.value for a in rest))
+            # 인터프리터 뒤의 리터럴만 읽는다. 조립식 argv 는 여기서 «안 보이는» 것이지
+            # 금지 대상이 아니다 — 그 단계가 실제로 도는지는 행동 관찰이 판정한다.
+            rest = [a.value for a in action.elts[1:]
+                    if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            argvs.append(tuple(rest))
         elif isinstance(action, ast.Name):
             callables.append(action.id)
-        elif errors is not None:
-            errors.append(f"stage {elt.elts[0].value!r} has an action this gate cannot "
-                          f"read (a lambda or a call) — declare a named function or an "
-                          f"argv list")
     return argvs, callables, len(node.elts)
 
 
-def _main_runs_the_stages(errors: list[str]) -> None:
-    """`main()` must actually execute what STAGES declares.
+def _preflight_actually_enforces(errors: list[str]) -> None:
+    """Run the entry point on a copy with one judge broken and require it to fail.
 
-    Reading the declaration is not reading the program. `main()` was gutted to
-    print the labels and return 0 — every gate silently skipped, the summary
-    still said "all gates green", and this file's static checks all passed,
-    because none of them looked at the engine.
+    This replaces four rules that pinned the *shape* of the runner's source —
+    a loop over STAGES, a call to `action`, a `subprocess.run`, a `return 1`.
+    Shape pinning was wrong in both directions at once: it accepted
+
+        if False:
+            action(); subprocess.run(action); return 1
+
+    (every marker present, nothing executed) and it rejected ordinary
+    refactoring — renaming `action`, extracting a helper, `subprocess.check_call`,
+    `return bool(failed)`. Source text is not behaviour.
+
+    So ask the runner to behave. Break the guardrail's judge in a copy, run
+    `scripts/preflight.sh`, and require a non-zero exit that names that stage.
+    A `main()` that skips its stages, a `STAGES` list emptied through an alias,
+    an argv pointed somewhere else — all of them stop failing, and all of them
+    are caught here without a single rule about how the source must look.
+
+    The copy carries the recursion marker so the inner run skips this probe.
     """
-    src = (ROOT / "scripts" / "preflight_runner.py").read_text(encoding="utf-8")
-    fn = next((n for n in ast.parse(src).body
-               if isinstance(n, ast.FunctionDef) and n.name == "main"), None)
-    if fn is None:
-        errors.append("preflight_runner.py has no main()")
+    if (ROOT / GUARDRAIL_NEST_MARKER).exists():
+        return                        # already inside a probe; do not recurse
+    judge = Path("tests/guardrail/run_guardrail.py")
+    anchor = '    if result.returncode == 0:\n        return "did NOT fail"\n'
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "probe"
+        shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(
+            ".git", "node_modules", "__pycache__", ".omc", ".omx"))
+        target = copy / judge
+        text = target.read_text(encoding="utf-8")
+        if anchor not in text:
+            errors.append(f"cannot probe whether preflight enforces: the anchor in "
+                          f"{judge} is gone, so this check would prove nothing")
+            return
+        target.write_text(text.replace(anchor, "    return None\n" + anchor, 1),
+                          encoding="utf-8")
+        (copy / GUARDRAIL_NEST_MARKER).write_text("", encoding="utf-8")
+        res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=copy,
+                             capture_output=True, text=True)
+    if res.returncode == 0:
+        errors.append("scripts/preflight.sh reported success on a tree whose judge was "
+                      "broken — the stages are declared and something between the "
+                      "declaration and the process exit is not running them")
         return
-    body = ast.dump(fn)
-    needs = {
-        "a loop over STAGES": "Name(id='STAGES'",
-        "a call to the stage's own function": "Call(func=Name(id='action'",
-        "a subprocess run of the stage's argv": "attr='run'",
-        "a non-zero return when a stage failed": "Constant(value=1)",
-    }
-    for what, marker in needs.items():
-        if marker not in body:
-            errors.append(f"preflight_runner.py's main() no longer contains {what} — "
-                          f"the stages can be declared and never executed")
+    chunk = next((c for c in ("\n" + res.stdout).split("\n== ")
+                  if c.startswith("guardrail self-test")), None)
+    if chunk is None:
+        errors.append("scripts/preflight.sh never reached the 'guardrail self-test' "
+                      "stage with the judge broken")
+    elif "FAIL" not in chunk.upper():
+        errors.append("scripts/preflight.sh went red with the judge broken, but not at "
+                      "the 'guardrail self-test' stage — the red came from elsewhere, "
+                      "so it is not evidence that stage ran")
 
 
 def check_preflight_stages(errors: list[str]) -> None:
@@ -771,14 +773,22 @@ def check_preflight_stages(errors: list[str]) -> None:
     showed the list would never end. So the stages moved into Python data and
     the shell shrank to two pinned lines.
     """
+    before = len(errors)
     wrapper = ROOT / "scripts" / "preflight.sh"
     runner = ROOT / "scripts" / "preflight_runner.py"
     if not wrapper.is_file() or not runner.is_file():
         errors.append("scripts/preflight.sh and scripts/preflight_runner.py must both exist")
         return
-    # bash 는 `\` + 개행을 파싱 전에 지운다. 우리도 지운다 — 주석 끝에 `\` 를 붙이면
-    # 그 다음 줄이 주석에 먹혀 exec 가 사라지는데, 줄 단위로 보면 멀쩡해 보인다.
-    raw = wrapper.read_text(encoding="utf-8").replace("\\\n", "").splitlines()
+    # `splitlines()` 를 쓰지 않는다: 파이썬은 U+0085·U+2028 도 줄 경계로 보는데
+    # **bash 는 안 그런다**. 그 차이로 「주석 안에 든 exec」 가 두 줄로 보인다.
+    # 그 입력을 «거부» 하지는 않는다 — 실제로 아무것도 안 돌기 때문에 아래의 행동
+    # 프로브가 잡는다. 여기서는 세는 방식만 bash 에 맞춘다.
+    #
+    # 반대로 「주석 끝의 `\` 가 다음 줄을 먹는다」는 리뷰 지적은 **틀렸다**. 재현해
+    # 보니 bash 는 주석 안의 백슬래시를 잇지 않고 다음 줄을 그대로 실행한다
+    # (`# c \` + 개행 + `echo RAN` → RAN). 그 지적을 그대로 믿고 넣었던 결합 규칙을
+    # 뺐다 — 없는 결함을 막던 규칙이었고, 그 케이스는 틀린 이유로 통과하고 있었다.
+    raw = wrapper.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n")
     # 셔뱅은 주석처럼 생겼지만 주석이 아니다 — 어떤 셸이 도는지 정하는 줄이다.
     effective = ([raw[0].rstrip()] if raw and raw[0].startswith("#!") else []) + [
         l.rstrip() for l in raw[1:] if l.strip() and not l.lstrip().startswith("#")]
@@ -787,7 +797,6 @@ def check_preflight_stages(errors: list[str]) -> None:
                       f"want {PREFLIGHT_WRAPPER_LINES}, got {effective}. Anything more "
                       f"is shell that can redefine, short-circuit or swallow a stage.")
 
-    _main_runs_the_stages(errors)
     argvs, callables, total = _stage_declarations(errors)
     if not total:
         errors.append("scripts/preflight_runner.py declares no STAGES list")
@@ -830,6 +839,11 @@ def check_preflight_stages(errors: list[str]) -> None:
     elif len(re.findall(r'^\s{4}\("', m2.group(1), re.M)) < 2:
         errors.append("PREFLIGHT_ENFORCEMENT has fewer than 2 entries — the section "
                       "still runs and proves nothing")
+
+    # 마지막으로, 그리고 정적 검사가 아무 말도 안 했을 때만: 진입점을 «돌려서» 본다.
+    # 이미 지적이 있으면 게이트는 어차피 빨갛고, 프로브는 시간만 쓴다.
+    if len(errors) == before:
+        _preflight_actually_enforces(errors)
 
 
 def check_ci_runs_preflight(errors: list[str]) -> None:
@@ -888,10 +902,24 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
     # `if: ${{ false }}` 를 job 에 붙이면 위 두 줄이 그대로 있는데 아무것도 안 돈다.
     for n, line in code:
         stripped = line.strip()
-        if stripped.startswith("if:") or stripped.startswith("continue-on-error:"):
+        if re.match(r"""^["']?(if|continue-on-error)["']?\s*:""", stripped):
             errors.append(f"validation.yml:{n} uses `{stripped}` — a condition or an "
                           f"ignored failure switches the gate off while every required "
                           f"line stays exactly where it was")
+
+    # `defaults: run: shell: true {0}` 는 모든 `run:` 을 «성공하는 no-op» 으로 바꾼다.
+    # 필수 줄은 제자리에 있고 아무것도 실행되지 않는다(리뷰 12).
+    for n, line in code:
+        if re.match(r"""^["']?(defaults|shell)["']?\s*:""", line.strip()):
+            errors.append(f"validation.yml:{n} sets `{line.strip()}` — a custom shell "
+                          f"or a defaults block can turn every `run:` into a no-op that "
+                          f"succeeds, with all the required lines still in place")
+    # 그리고 트리거. `on:` 을 `workflow_dispatch` 만 남기면 PR·push 에서 아무것도 안 돈다.
+    joined = "\n".join(l for _, l in code)
+    for trigger in ("pull_request:", "push:"):
+        if not re.search(rf"^\s+{re.escape(trigger)}\s*$", joined, re.M):
+            errors.append(f"validation.yml does not trigger on {trigger[:-1]} — the gate "
+                          f"exists and no pull request or push runs it")
 
     for n, line in code:
         if line in CI_REQUIRED_LINES:

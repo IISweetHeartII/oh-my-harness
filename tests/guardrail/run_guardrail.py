@@ -415,22 +415,6 @@ def break_runner_argv_head(repo: Path) -> str:
     return "a stage whose argv starts with something that is not the interpreter"
 
 
-def break_preflight_wrapper_continuation(repo: Path) -> str:
-    """A `\\` at the end of the last comment swallows the exec line.
-
-    bash removes the continuation before parsing, so the exec becomes part of
-    the comment and the script runs nothing — while a line-by-line reading
-    still sees the shebang and the exec.
-    """
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    marker = "# 설치형 pre-push 훅: bash scripts/install-hooks.sh\n"
-    if marker not in text:
-        raise AssertionError("preflight.sh no longer ends its comments this way")
-    p.write_text(text.replace(marker, marker.rstrip("\n") + " \\\n", 1), encoding="utf-8")
-    return "a line continuation that folds the exec line into a comment"
-
-
 def break_ci_step_replaced_by_decoy(repo: Path) -> str:
     """Real steps replaced by `echo`, canonical lines hidden in a job-level env.
 
@@ -464,6 +448,97 @@ def break_ci_job_disabled(repo: Path) -> str:
     wf.write_text(text.replace(marker, marker + "    if: ${{ false }}\n", 1),
                   encoding="utf-8")
     return "the whole job switched off by a condition, every line still in place"
+
+
+def break_runner_dead_code(repo: Path) -> str:
+    """A main() carrying every marker a shape check looked for, inside `if False`.
+
+    The loop, the `action()` call, the `subprocess.run`, the `return 1` are all
+    present in the source and none of them execute. This is why the shape rules
+    were replaced by running the thing.
+    """
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    start = text.index("def main() -> int:")
+    p.write_text(text[:start] + (
+        "def main() -> int:\n"
+        "    failed = []\n"
+        "    for label, action in STAGES:\n"
+        '        print(f"\\n== {label}", flush=True)\n'
+        "    if False:\n"
+        "        action()\n"
+        "        subprocess.run(action, cwd=ROOT)\n"
+        "        return 1\n"
+        '    print(f"\\npreflight: all gates green ({len(STAGES)} stages)")\n'
+        "    return 0\n\n\n"
+        'if __name__ == "__main__":\n'
+        "    sys.exit(main())\n"), encoding="utf-8")
+    return "a main() whose every stage call sits in dead code"
+
+
+def break_runner_alias_mutation(repo: Path) -> str:
+    """Empty STAGES through an alias — the name `STAGES` is never touched."""
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    marker = "def main() -> int:"
+    if marker not in text:
+        raise AssertionError("the runner has no main() to insert before")
+    p.write_text(text.replace(
+        marker, "ALIAS = STAGES\nALIAS[:] = [(label, lambda: True) for label, _ in ALIAS]"
+                "\n\n\n" + marker, 1), encoding="utf-8")
+    return "every stage neutered through an alias, leaving STAGES untouched"
+
+
+def break_preflight_unicode_break(repo: Path) -> str:
+    """A U+0085 where a newline is expected.
+
+    Python's `splitlines()` treats it as a line break and bash does not, so the
+    exec stayed inside the comment while the gate saw two clean lines.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    marker = "# 설치형 pre-push 훅: bash scripts/install-hooks.sh\n"
+    if marker not in text:
+        raise AssertionError("preflight.sh no longer ends its comments this way")
+    p.write_text(text.replace(marker, marker.rstrip("\n") + "\u0085", 1), encoding="utf-8")
+    return "a Unicode line separator bash does not treat as one"
+
+
+def break_ci_custom_shell(repo: Path) -> str:
+    """`defaults.run.shell: true {0}` — every run: step succeeds without running."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    marker = "    runs-on: ubuntu-latest\n"
+    if marker not in text:
+        raise AssertionError("validation.yml no longer declares runs-on the expected way")
+    wf.write_text(text.replace(
+        marker, marker + "    defaults:\n      run:\n        shell: true {0}\n", 1),
+        encoding="utf-8")
+    return "a custom shell that reports success without running the step"
+
+
+def break_ci_quoted_if(repo: Path) -> str:
+    """The same condition written as a quoted key with a space before the colon."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    marker = "    runs-on: ubuntu-latest\n"
+    if marker not in text:
+        raise AssertionError("validation.yml no longer declares runs-on the expected way")
+    wf.write_text(text.replace(
+        marker, marker + "    \"if\" : github.repository == 'someone/else'\n", 1),
+        encoding="utf-8")
+    return "the job condition written as a quoted key, spelled past a prefix check"
+
+
+def break_ci_triggers_removed(repo: Path) -> str:
+    """Leave only `workflow_dispatch` — no pull request or push ever runs it."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    old = "on:\n  pull_request:\n  push:\n    branches:\n      - main\n  workflow_dispatch:\n"
+    if old not in text:
+        raise AssertionError("validation.yml no longer declares its triggers this way")
+    wf.write_text(text.replace(old, "on:\n  workflow_dispatch:\n", 1), encoding="utf-8")
+    return "the automatic triggers removed, leaving a gate nothing starts"
 
 
 def break_nest_marker_tracked(repo: Path) -> str:
@@ -574,9 +649,14 @@ CASES = {
     "runner-main-gutted": break_runner_main_gutted,
     "runner-stages-mutated": break_runner_stages_mutated,
     "runner-argv-head": break_runner_argv_head,
-    "preflight-wrapper-continuation": break_preflight_wrapper_continuation,
     "ci-step-replaced-by-decoy": break_ci_step_replaced_by_decoy,
     "ci-job-disabled": break_ci_job_disabled,
+    "runner-dead-code": break_runner_dead_code,
+    "runner-alias-mutation": break_runner_alias_mutation,
+    "preflight-unicode-break": break_preflight_unicode_break,
+    "ci-custom-shell": break_ci_custom_shell,
+    "ci-quoted-if": break_ci_quoted_if,
+    "ci-triggers-removed": break_ci_triggers_removed,
     "nest-marker-tracked": break_nest_marker_tracked,
     "ci-preflight-swallowed": break_ci_preflight_swallowed,
     "ci-preflight-action-input": break_ci_preflight_action_input,
@@ -1299,6 +1379,13 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
+    # 프로브 안이다. 프로브가 재는 것은 «1단계가 실제로 돌았는가» 뿐이고, 이 스위트를
+    # 한 번 더 도는 데 10초가 든다. 자기시험(--self-test)은 위에서 이미 지나갔으므로
+    # 프로브가 보려는 것은 그대로 측정된다.
+    if (ROOT / NEST_MARKER).exists():
+        print("guardrail suite: skipped (inside a preflight probe)")
+        return 0
+
     known = subprocess.run(
         [sys.executable, str(VALIDATOR), "--list"],
         cwd=ROOT, capture_output=True, text=True,
@@ -1319,9 +1406,14 @@ def main() -> int:
                "runner-main-gutted": "preflight-stages",
                "runner-stages-mutated": "preflight-stages",
                "runner-argv-head": "preflight-stages",
-               "preflight-wrapper-continuation": "preflight-stages",
                "ci-step-replaced-by-decoy": "ci-runs-preflight",
                "ci-job-disabled": "ci-runs-preflight",
+               "runner-dead-code": "preflight-stages",
+               "runner-alias-mutation": "preflight-stages",
+               "preflight-unicode-break": "preflight-stages",
+               "ci-custom-shell": "ci-runs-preflight",
+               "ci-quoted-if": "ci-runs-preflight",
+               "ci-triggers-removed": "ci-runs-preflight",
                "nest-marker-tracked": "preflight-stages",
                "ci-preflight-swallowed": "ci-runs-preflight",
                "ci-preflight-action-input": "ci-runs-preflight",
