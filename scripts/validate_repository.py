@@ -18,6 +18,7 @@ fail is not a gate.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -615,34 +616,6 @@ def check_size_budget(errors: list[str]) -> None:
 
 # preflight 가 «반드시 실행해야 하는» 것들. 개수 세기(preflight 안)와 이 목록(밖)이
 # 서로를 받친다 — 하나를 지우면 개수가 어긋나고, 다른 것으로 바꿔치기하면 이 목록이 잡는다.
-# preflight 가 «정확히» 실행해야 하는 명령. 위치 파싱 대신 글자 대조다 —
-# 우리가 쓴 파일이고, 형태가 바뀌면 여기도 같이 바꾸는 것이 맞다.
-REQUIRED_PREFLIGHT_COMMANDS = [
-    "python3 tests/guardrail/run_guardrail.py --self-test",
-    "python3 scripts/validate_repository.py --self-test",
-    "python3 scripts/validate_repository.py",
-    "python3 tests/guardrail/run_guardrail.py",
-    "python3 scripts/harness_lint.py tests/fixtures/clean-harness",
-]
-
-# CI 가 «정확히» 실행해야 하는 단계, 순서대로. 무결성 확인이 먼저다.
-CI_REQUIRED_STEPS = [
-    "python3 scripts/validate_repository.py --only preflight-stages",
-    "bash scripts/preflight.sh",
-]
-
-# CI 의 실행 단계에 이 이름들이 위 두 줄 «말고» 나오면 게이트 목록이 갈라지는 중이다.
-CI_FORBIDDEN_MENTIONS = ("scripts/validate_repository.py",
-                         "tests/guardrail/run_guardrail.py",
-                         "scripts/harness_lint.py")
-
-# preflight 의 «실행기» 는 글자 그대로 이 모양이어야 한다.
-#
-# 왜 (2026-08-28 실측): 호출 줄도 STAGES_EXPECTED 도 그대로 둔 채 run() 만
-# 「--self-test 이면 그냥 return 0」 으로 고쳤더니, 그 단계가 한 번도 안 돌았는데
-# preflight-stages 도 preflight 도 초록이었다. 게이트가 «호출 줄» 을 보고 있었지
-# «실행» 을 보고 있지 않았다. 스크립트는 자기 자신에 대한 편집을 막을 수 없으니
-# 판정은 바깥 파일이 한다.
 # 가드레일 스위트가 «반드시 부르는» 절. 한 줄을 지우면 그 절 전체가 조용히 사라진다 —
 # 스위트 안에서는 아무도 모르고, 요약 문장만 짧아진다. 그래서 밖에서 센다.
 REQUIRED_GUARDRAIL_SECTIONS = ("guardrail_harness_lint", "guardrail_valid_variants",
@@ -652,113 +625,120 @@ REQUIRED_GUARDRAIL_SECTIONS = ("guardrail_harness_lint", "guardrail_valid_varian
 # 가드레일이 preflight 를 재귀 없이 돌리기 위한 표시. 사본 안에만 만드는 «파일» 이다 —
 # 환경변수로 두었더니 워크플로우 밖에서 켜는 길이 여럿이었다(composite action 이
 # `$GITHUB_ENV` 에 쓰기 · self-hosted runner 환경 · preflight 안에서 export).
-# 파일은 저장소 안에 있어야 효력이 있고, 있으면 이 게이트가 본다.
 GUARDRAIL_NEST_MARKER = ".guardrail-nested"
 
-# preflight.sh 가 정의해도 되는 함수. 그 밖의 정의는 전부 거부한다.
-PREFLIGHT_ALLOWED_FUNCTIONS = {"run", "stage"}
+# preflight.sh 는 이제 «두 줄» 이다 — 러너를 exec 할 뿐이다. 주석을 뺀 유효 줄이
+# 정확히 이것이어야 한다. 셸이 두 줄뿐이면 셸로 할 수 있는 우회도 두 줄만큼이다.
+PREFLIGHT_WRAPPER_LINES = [
+    "#!/usr/bin/env bash",
+    'exec python3 "$(dirname "$0")/preflight_runner.py" "$@"',
+]
 
-PREFLIGHT_RUNNER_BODIES = {
-    "run": r"""run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }""",
-    "stage": r"""stage() { printf '\n== %s\n' "$1"; stages_run=$((stages_run + 1)); }""",
-}
+# 러너가 «반드시» 돌려야 하는 것. argv 꼬리(인터프리터 뒤)로 비교한다.
+REQUIRED_STAGE_COMMANDS = [
+    ("tests/guardrail/run_guardrail.py", "--self-test"),
+    ("scripts/validate_repository.py", "--self-test"),
+    ("scripts/validate_repository.py",),
+    ("tests/guardrail/run_guardrail.py",),
+    ("scripts/harness_lint.py", "tests/fixtures/clean-harness"),
+]
+# 그리고 파이썬으로 쓰인 단계들. 이름이 사라지면 그 단계가 통째로 없어진 것이다.
+REQUIRED_STAGE_CALLABLES = ("stage_nothing_to_lint", "stage_json_parses",
+                            "stage_no_conflict_markers")
+
+# CI 는 이 줄들을 «글자 그대로, 각각 한 번씩, 이 순서로» 가져야 한다.
+# YAML 의미를 해석하지 않는다 — 우리가 쓴 파일의 줄을 고정할 뿐이다. 접는 스칼라
+# 안에 같은 줄을 숨겨도 «두 번» 이 되어 걸린다.
+CI_REQUIRED_LINES = [
+    "        run: python3 scripts/validate_repository.py --only preflight-stages",
+    "        run: bash scripts/preflight.sh",
+]
+CI_FORBIDDEN_MENTIONS = ("scripts/validate_repository.py",
+                         "tests/guardrail/run_guardrail.py",
+                         "scripts/harness_lint.py",
+                         "scripts/preflight_runner.py",
+                         "working-directory")
 
 
-def _preflight_commands() -> list[str]:
-    """The commands preflight.sh actually executes.
+def _stage_declarations() -> tuple[list[tuple[str, ...]], list[str], int]:
+    """(argv tails, callable names, total stages) declared in preflight_runner.py.
 
-    `run "label" cmd args...` lines, not the whole file — a mention in a comment
-    is not an invocation. Same mistake as the CI gate, one level in.
+    Read as a syntax tree, not as text: `STAGES` is data, so ask Python what it
+    says. This is the whole reason the runner is Python — the old shell version
+    had to be *interpreted* to answer the same question, and interpreting shell
+    by regex is how six bypasses got through.
     """
-    text = (ROOT / "scripts" / "preflight.sh").read_text(encoding="utf-8")
-    out = []
-    for line in text.splitlines():
-        m = re.match(r'^\s*run\s+"[^"]*"\s+(.*)$', line)
-        if m:
-            out.append(_strip_shell_comments(m.group(1)).strip())
-    return [c for c in out if c]
+    src = (ROOT / "scripts" / "preflight_runner.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    node = next((n.value for n in tree.body
+                 if isinstance(n, ast.Assign)
+                 and any(getattr(t, "id", None) == "STAGES" for t in n.targets)), None)
+    if not isinstance(node, ast.List):
+        return [], [], 0
+    argvs: list[tuple[str, ...]] = []
+    callables: list[str] = []
+    for elt in node.elts:
+        if not isinstance(elt, ast.Tuple) or len(elt.elts) != 2:
+            continue
+        action = elt.elts[1]
+        if isinstance(action, ast.List):
+            parts = [a.value for a in action.elts if isinstance(a, ast.Constant)]
+            argvs.append(tuple(parts))
+        elif isinstance(action, ast.Name):
+            callables.append(action.id)
+    return argvs, callables, len(node.elts)
 
 
 def check_preflight_stages(errors: list[str]) -> None:
-    """Every gate this repository owns is actually invoked by preflight.sh.
+    """The entry point runs every gate this repository owns, and nothing hides it.
 
-    Removing the self-test line and breaking the judge produced exit 0 — the
-    gates existed, and the line that ran one of them did not. A check nobody
-    calls is not a check, and nothing was watching the calls.
+    The shell version declared its stages as `run "label" cmd` lines, and this
+    gate tried to prove from that text that they really ran. Six bypasses got
+    through in ten reviews, each a new blacklist entry, and `eval 'run() {…}'`
+    showed the list would never end. So the stages moved into Python data and
+    the shell shrank to two pinned lines.
     """
-    commands = _preflight_commands()
-    if not commands:
-        errors.append("scripts/preflight.sh has no `run \"...\" <command>` stages")
+    wrapper = ROOT / "scripts" / "preflight.sh"
+    runner = ROOT / "scripts" / "preflight_runner.py"
+    if not wrapper.is_file() or not runner.is_file():
+        errors.append("scripts/preflight.sh and scripts/preflight_runner.py must both exist")
         return
-    canonical = [_canonical(c) for c in commands]
-    for want in REQUIRED_PREFLIGHT_COMMANDS:
-        if want not in canonical:
-            errors.append(f"scripts/preflight.sh has no stage running exactly "
-                          f"`{want}` — that gate exists and nothing calls it. "
-                          f"(stages found: {'; '.join(canonical) or 'none'})")
-    # 개수 선언이 실제 단계 수와 맞는지도 본다 — 선언만 고치고 단계를 지우는 우회를 막는다
-    text = (ROOT / "scripts" / "preflight.sh").read_text(encoding="utf-8")
-    m = re.search(r"^STAGES_EXPECTED=(\d+)", text, re.M)
-    if not m:
-        errors.append("scripts/preflight.sh no longer declares STAGES_EXPECTED")
-    else:
-        declared = int(m.group(1))
-        actual = len(commands) + len(re.findall(r'^\s*stage\s+"', text, re.M))
-        if declared != actual:
-            errors.append(f"scripts/preflight.sh declares STAGES_EXPECTED={declared} "
-                          f"but has {actual} stages")
-    # 그리고 실행기 자체 — 호출 줄과 개수를 그대로 둔 채 run() 만 고치면
-    # 「센 단계」와 「실행한 단계」가 갈라진다.
-    #
-    # 이 고정은 «본 적 있는» 변조만 막는다. 정적 고정만 두었더니 한 자리에서 셋이
-    # 더 뚫렸다 — 중복 정의 · 실행자 셰도잉 · exit 0. 진짜 판정은 가드레일이
-    # preflight 를 «실제로 돌려서» 한다. 여기 넷은 그 위의 얇은 그물이다.
-    # 줄 연결(`\` + 개행)은 bash 가 파싱 «전에» 지운다. 정의를 세기 «전에» 우리도
-    # 지운다 — 안 그러면 `r\<개행>un() { … }` 가 두 번째 정의인데 한 줄로 안 보인다.
-    joined = text.replace("\\\n", "")
-    for name, want in PREFLIGHT_RUNNER_BODIES.items():
-        # `name()` 과 `function name` 둘 다 정의다. 앞의 것만 세면 `function run { … }`
-        # 로 no-op 을 덮어쓸 수 있다.
-        defs = [l.strip() for l in joined.splitlines()
-                if re.match(rf"(function\s+{re.escape(name)}\b|{re.escape(name)}\s*\(\))", l.strip())]
-        if not defs:
-            errors.append(f"scripts/preflight.sh no longer defines {name}()")
-        elif len(defs) > 1:
-            # 나중 정의가 앞 정의를 덮는다. 정경 정의를 그대로 두고 아래에 하나 더
-            # 놓으면 「첫 줄만 보는」 고정은 그대로 통과했다(실측).
-            errors.append(f"scripts/preflight.sh defines {name}() {len(defs)} times — "
-                          f"the last definition wins and the canonical one is decoration")
-        elif defs[0] != want:
-            errors.append(
-                f"scripts/preflight.sh's {name}() is not the canonical runner — "
-                f"a stage can be counted without being executed. "
-                f"want: {want}  ||  got: {defs[0]}")
-    # 이 스크립트가 정의해도 되는 함수는 둘뿐이다. 실행자 이름(`python3`·`bash`…)을
-    # 함수로 가리면 그 이름을 쓰는 단계가 조용히 no-op 이 되고, 이름을 열거해 막으려
-    # 하면 bash 의 정의 문법을 전부 알아야 한다. 허용 목록이 훨씬 짧다.
-    #
-    for m in re.finditer(
-            r"^[ \t]*(?:function[ \t]+([A-Za-z_][A-Za-z0-9_.-]*)"
-            r"|([A-Za-z_][A-Za-z0-9_.-]*)[ \t]*\([ \t]*\))",
-            joined, re.M):
-        name = m.group(1) or m.group(2)
-        if name not in PREFLIGHT_ALLOWED_FUNCTIONS:
-            errors.append(f"scripts/preflight.sh defines a shell function named "
-                          f"{name} — only {sorted(PREFLIGHT_ALLOWED_FUNCTIONS)} may be "
-                          f"defined here. A function named after an interpreter turns "
-                          f"every stage that uses it into a silent no-op.")
+    raw = wrapper.read_text(encoding="utf-8").splitlines()
+    # 셔뱅은 주석처럼 생겼지만 주석이 아니다 — 어떤 셸이 도는지 정하는 줄이다.
+    effective = ([raw[0].rstrip()] if raw and raw[0].startswith("#!") else []) + [
+        l.rstrip() for l in raw[1:] if l.strip() and not l.lstrip().startswith("#")]
+    if effective != PREFLIGHT_WRAPPER_LINES:
+        errors.append(f"scripts/preflight.sh is no longer the two-line wrapper. "
+                      f"want {PREFLIGHT_WRAPPER_LINES}, got {effective}. Anything more "
+                      f"is shell that can redefine, short-circuit or swallow a stage.")
+
+    argvs, callables, total = _stage_declarations()
+    if not total:
+        errors.append("scripts/preflight_runner.py declares no STAGES list")
+        return
+    for want in REQUIRED_STAGE_COMMANDS:
+        if not any(tuple(a) == want for a in argvs):
+            errors.append(f"preflight_runner.py has no stage running {' '.join(want)} — "
+                          f"that gate exists and nothing calls it "
+                          f"(stages declared: {argvs})")
+    for name in REQUIRED_STAGE_CALLABLES:
+        if name not in callables:
+            errors.append(f"preflight_runner.py's STAGES no longer includes {name} — "
+                          f"the function may still exist, but nothing runs it")
+
     # 재귀 표시가 «추적되면» 모든 체크아웃에서 강제 확인이 건너뛰어진다.
     #
     # 「존재하면」이 아니라 「추적되면」인 이유: 중첩 실행되는 사본에는 이 파일이
     # 정당하게 있고(그게 재귀를 끊는 장치다), 거기서 이 게이트가 울면 강제 확인이
     # «엉뚱한 단계» 에서 빨개져 증거가 못 된다. 추적되지 않은 로컬 파일은 그 사람의
-    # 작업 사본에만 영향을 주고 CI 의 신선 체크아웃에는 없다 — 다른 로컬 수정과 같다.
+    # 작업 사본에만 영향을 주고 CI 의 신선 체크아웃에는 없다 — §D-8 에 적었다.
     if subprocess.run(["git", "ls-files", "--error-unmatch", GUARDRAIL_NEST_MARKER],
                       cwd=ROOT, capture_output=True).returncode == 0:
         errors.append(f"{GUARDRAIL_NEST_MARKER} is tracked by git — that file tells the "
                       f"guardrail it is already inside a preflight run, so the check "
                       f"that preflight enforces its gates would skip in every "
                       f"checkout. It belongs only inside a temporary copy.")
+
     # 가드레일 스위트의 절이 다 불리는가. 호출 줄 하나를 지우면 그 절이 통째로 안 돈다.
     suite = (ROOT / "tests" / "guardrail" / "run_guardrail.py").read_text(encoding="utf-8")
     called = set(re.findall(r"^\s*(\w+)\(failures, args\.verbose\)", suite, re.M))
@@ -774,151 +754,56 @@ def check_preflight_stages(errors: list[str]) -> None:
     elif len(re.findall(r'^\s{4}\("', m2.group(1), re.M)) < 2:
         errors.append("PREFLIGHT_ENFORCEMENT has fewer than 2 entries — the section "
                       "still runs and proves nothing")
-    # 종료 코드. `exit 0` 이면 모든 게이트가 빨개져도 이 스크립트는 성공을 보고한다.
-    # 스크립트는 자기 종료코드를 검사할 수 없으므로, 이 줄을 «밖에서» 확인하는
-    # 무결성 스텝(CI·pre-push 훅 첫 줄)이 짝을 이룬다.
-    effective = [l.rstrip() for l in text.splitlines()
-                 if l.strip() and not l.lstrip().startswith("#")]
-    if not effective or not re.fullmatch(r'exit "?\$fail"?', effective[-1].strip()):
-        errors.append("scripts/preflight.sh's last effective line is "
-                      f"{(effective[-1].strip() if effective else '(nothing)')!r}, "
-                      "not `exit $fail` — a stage can fail while the script reports "
-                      "success. Checking that the line merely exists let an `exit 0` "
-                      "sit above the stages with the real line still below it.")
-    stray = [l for l in effective if re.fullmatch(r"exit\s+\d+", l.strip())]
-    # 같은 결과를 내는 다른 두 길(리뷰 9): 마지막에 `fail=0` 을 한 번 더 놓기,
-    # `trap ... EXIT` 로 종료를 가로채기. 둘 다 «단계는 다 돌았는데 결과만 거짓» 이다.
-    resets = [l for l in effective if re.fullmatch(r"fail=0", l.strip())]
-    if len(resets) != 1 or effective.index(resets[0]) > effective.index(
-            next((l for l in effective if l.lstrip().startswith("run ")), effective[-1])):
-        errors.append(f"scripts/preflight.sh sets `fail=0` {len(resets)} time(s) and not "
-                      f"only before the stages — a second reset erases every failure "
-                      f"while every stage still runs")
-    if any(l.lstrip().startswith("trap ") for l in effective):
-        errors.append("scripts/preflight.sh installs a `trap` — an EXIT trap can "
-                      "replace the script's result after every stage has run")
-    if stray:
-        errors.append("scripts/preflight.sh contains a literal `exit <n>` — "
-                      "the script must end on `exit $fail` and nowhere else decide "
-                      "its own result")
-
-
-# 임의의 셸을 파싱해 「이게 실행되는가」를 맞히려던 시도는 여덟 차례 리뷰 중 네 번
-# 뚫렸다 — `bash -n`, `command -v`, 죽은 분기, `if false`, 히어독, 안 불리는 함수,
-# `bash -c ':' x.sh`, `-O extglob`… 셸 문법은 유한하지 않고, 우리는 셸을 구현하는 게
-# 아니다. **그래서 계약을 좁혔다**: 이 저장소가 스스로 부르는 명령은 우리가 쓴 것이고,
-# 정확히 이 글자여야 한다. 파싱이 아니라 대조다.
-def _canonical(command: str) -> str:
-    """Whitespace-normalised command text, comments stripped."""
-    return " ".join(_strip_shell_comments(command).split())
-
-
-def _strip_shell_comments(body: str) -> str:
-    """Drop `#` comments from a shell snippet.
-
-    `run: # bash scripts/preflight.sh` executes nothing, and a comment-only
-    block scalar executes nothing either — both satisfied the gate. Reading a
-    run step as one string is the same substring mistake one level in.
-    """
-    out = []
-    for line in body.splitlines():
-        stripped = re.sub(r'(?:^|(?<=\s))#.*$', "", line)
-        if stripped.strip():
-            out.append(stripped)
-    return "\n".join(out)
-
-
-def _workflow_run_commands(text: str) -> list[str]:
-    """The shell commands a GitHub workflow actually executes.
-
-    Only `run:` step bodies, including block scalars. Reading the whole file as
-    one string counts the header comment — which is how a workflow that ran
-    `echo validation-skipped` passed a gate whose whole job was to check that it
-    runs preflight. A comment is not an execution step.
-    """
-    lines, out, i, item_key_indent = text.splitlines(), [], 0, None
-    while i < len(lines):
-        # 어떤 들여쓰기가 «단계의 키» 인지 기억한다. `- uses:` 아래 `with:` 안의
-        # `run:` 은 액션 «입력» 이지 실행 단계가 아닌데, 들여쓰기를 안 보면 단계로
-        # 세어져 요구 목록을 거짓으로 만족시킨다(실측).
-        item = re.match(r"^(\s*)-\s+\S", lines[i])
-        if item:
-            item_key_indent = len(item.group(1)) + 2
-        m = re.match(r"^(\s*)(-\s+)?run:\s*(.*)$", lines[i])
-        if not m:
-            i += 1
-            continue
-        key_indent = len(m.group(1)) + (len(m.group(2)) if m.group(2) else 0)
-        if m.group(2) is None and key_indent != item_key_indent:
-            i += 1                      # not a step's own key
-            continue
-        indent, rest = len(m.group(1)), m.group(3).strip()
-        if rest and rest[0] not in "|>":
-            out.append(_strip_shell_comments(rest))
-            i += 1
-            continue
-        # a block scalar: everything indented deeper than the `run:` key
-        i += 1
-        block = []
-        while i < len(lines):
-            line = lines[i]
-            if line.strip() and (len(line) - len(line.lstrip())) <= indent:
-                break
-            block.append(line)
-            i += 1
-        out.append(_strip_shell_comments("\n".join(block)))
-    return out
 
 
 def check_ci_runs_preflight(errors: list[str]) -> None:
-    """CI must run the same script a human runs — and exactly it.
+    """CI runs the entry point, verbatim, and nothing else runs a gate directly.
 
     v2.7.0 shipped with a failing guardrail because the push command ran one
     gate out of three. preflight.sh exists to stop that, but only while the
     thing that actually blocks a merge calls it.
 
-    Earlier versions tried to decide "does this shell snippet execute the
-    script" by parsing. Four separate reviews broke that parser — `bash -n`,
-    `command -v`, `false && …`, `if false; then … fi`, a heredoc, an uncalled
-    function, `bash -c ':' x.sh`, `-O extglob`. Shell grammar is not a finite
-    list and we are not writing a shell. So the contract is narrower and the
-    check is a comparison, not a parse: CI runs these exact commands. Anything
-    else — a wrapper, a Makefile target, `|| true` — is refused loudly, which
-    is the safe direction for a gate.
+    Three earlier versions asked "does this YAML step execute the script" and
+    all three were wrong: reading the file as one string counted a header
+    comment, reading `run:` by name counted an action's `with: run:` input, and
+    folding a `>` scalar turned the command into a shell comment that the
+    parser had already stripped. Interpreting YAML semantics is not the job.
+
+    So this pins lines in a file we own. Each required line must appear exactly
+    once, in order, spelled exactly. A decoy hidden in a block scalar makes the
+    count two and fails; a wrapper, `|| true`, a Makefile target or a changed
+    `working-directory` simply is not the line. The contract is narrow on
+    purpose — `docs/OPEN-FINDINGS.md` §C-12.
     """
     wf = ROOT / ".github" / "workflows" / "validation.yml"
     if not wf.is_file():
         errors.append(".github/workflows/validation.yml is missing")
         return
-    text = wf.read_text(encoding="utf-8")
-    steps = [_canonical(c) for c in _workflow_run_commands(text)]
-    steps = [s for s in steps if s]
-    if not steps:
-        errors.append("validation.yml has no run: step that executes anything")
-        return
+    lines = [l.rstrip() for l in wf.read_text(encoding="utf-8").splitlines()]
+    code = [(n, l) for n, l in enumerate(lines, 1) if not l.lstrip().startswith("#")]
 
-    for want in CI_REQUIRED_STEPS:
-        if want not in steps:
+    where = []
+    for want in CI_REQUIRED_LINES:
+        hits = [n for n, l in code if l == want]
+        if len(hits) != 1:
             errors.append(
-                f"no run: step in validation.yml is exactly `{want}`. CI must run "
-                f"the entry point verbatim — a wrapper or a swallowed exit code "
-                f"turns the green tick into 'the gates CI knows about'. "
-                f"(steps found: {'; '.join(steps)})")
-    # 무결성 확인이 preflight «앞» 이어야 한다. 뒤에 있어도 잡히긴 하지만,
-    # 문서가 「앞」이라고 말하고 있으므로 둘을 갈라 두지 않는다.
-    if all(w in steps for w in CI_REQUIRED_STEPS) and \
-            steps.index(CI_REQUIRED_STEPS[0]) > steps.index(CI_REQUIRED_STEPS[1]):
+                f"validation.yml must contain the line `{want.strip()}` exactly once "
+                f"(found {len(hits)}). CI runs the entry point verbatim — a wrapper, a "
+                f"swallowed exit code or a copy hidden in a block scalar is not it.")
+        where.append(hits[0] if len(hits) == 1 else None)
+    if all(w is not None for w in where) and where != sorted(where):
         errors.append("validation.yml runs preflight before the integrity check — "
-                      "the point of that step is to distrust preflight's exit code, "
-                      "so it goes first, as the docs say")
-    for step in steps:
-        if step in CI_REQUIRED_STEPS:
+                      "that step exists to distrust preflight's exit code, so it "
+                      "goes first, as the docs say")
+
+    for n, line in code:
+        if line in CI_REQUIRED_LINES:
             continue
         for name in CI_FORBIDDEN_MENTIONS:
-            if name in step:
-                errors.append(f"a run: step mentions {name} outside the two canonical "
-                              f"commands (`{step}`) — re-listing the gates here is how "
-                              f"this file and preflight.sh drift apart")
+            if name in line:
+                errors.append(f"validation.yml:{n} mentions {name} outside the two "
+                              f"canonical lines (`{line.strip()}`) — re-listing the "
+                              f"gates here is how this file and preflight drift apart")
 
 
 def check_lint_rule_docs(errors: list[str]) -> None:
@@ -1014,49 +899,73 @@ CHECKS = {
 # 한쪽만 재면 규칙이 틀린 채로 완벽하게 발화한다.
 # (워크플로우 조각, 실행 단계로 읽혀야 하는 명령들) — `run:` 본문을 뽑아내는 파서가
 # 이 판정의 전부다. 주석·블록 스칼라를 잘못 읽으면 「CI 가 게이트를 부른다」가 거짓이 된다.
-WORKFLOW_SELF_TEST = [
-    ("      - run: bash scripts/preflight.sh\n", ["bash scripts/preflight.sh"]),
-    ("      - name: x\n        run: bash scripts/preflight.sh\n",
-     ["bash scripts/preflight.sh"]),
-    # 블록 스칼라 — 여러 줄이 한 단계다
-    ("      - run: |\n          set -e\n          bash scripts/preflight.sh\n",
-     ["set -e bash scripts/preflight.sh"]),
-    # 셸 주석만 있는 단계는 «아무것도 실행하지 않는다»
-    ("      - run: |\n          # bash scripts/preflight.sh\n", [""]),
-    # 헤더 주석은 단계가 아니다
-    ("# bash scripts/preflight.sh\njobs:\n  a:\n    steps:\n"
-     "      - run: echo hi\n", ["echo hi"]),
-    # 액션의 «입력» 으로 들어간 run 은 실행 단계가 아니다
-    ("      - uses: x/y@v1\n        with:\n          run: bash scripts/preflight.sh\n", []),
-    # 같은 항목의 형제 키로 온 run 은 단계다
-    ("      - name: gate\n        run: bash scripts/preflight.sh\n",
-     ["bash scripts/preflight.sh"]),
+# (러너 소스 조각, 읽혀야 하는 argv 꼬리들, 콜러블 이름들)
+# `STAGES` 를 구문 트리로 읽는 것이 「게이트가 실제로 불린다」의 근거 전부다.
+STAGES_SELF_TEST = [
+    ('STAGES = [\n    ("a", [PY, "x.py"]),\n]\n', [("x.py",)], []),
+    ('STAGES = [\n    ("a", [PY, "x.py", "--flag"]),\n    ("b", fn),\n]\n',
+     [("x.py", "--flag")], ["fn"]),
+    # 목록이 비면 «단계가 없다» 이지 «다 있다» 가 아니다
+    ("STAGES = [\n]\n", [], []),
+    # 다른 이름의 목록은 STAGES 가 아니다
+    ('OTHER = [\n    ("a", [PY, "x.py"]),\n]\n', [], []),
 ]
 
 
 def self_test() -> int:
-    """Test this file's own parsing, on the shapes that fooled it before.
+    """Test this file's own reading of the runner's stage declarations.
 
-    `_workflow_run_commands` is what "CI runs the gate" now rests on. Reading
-    the workflow as one string counted the header comment; reading a `run:`
-    step as one line missed block scalars; not stripping shell comments let a
-    commented-out call satisfy the gate. All three shipped.
+    Everything the preflight gate claims rests on this: if `STAGES` is misread,
+    "that gate exists and nothing calls it" is decided on nothing. The previous
+    judge here parsed shell and then YAML, and was wrong in both — six bypasses
+    and three false readings. Data is easier to be right about, but only if the
+    reading is pinned.
     """
+    import ast as _ast
     fail = 0
-    for source, want in WORKFLOW_SELF_TEST:
-        got = [_canonical(c) for c in _workflow_run_commands(source)]
-        if got == want:
-            print(f"  ok  run: steps of {source.splitlines()[0].strip()!r} -> {got}")
+
+    def read(src: str):
+        tree = _ast.parse(src)
+        node = next((n.value for n in tree.body
+                     if isinstance(n, _ast.Assign)
+                     and any(getattr(x, "id", None) == "STAGES" for x in n.targets)), None)
+        if not isinstance(node, _ast.List):
+            return [], []
+        argvs, calls = [], []
+        for elt in node.elts:
+            if not isinstance(elt, _ast.Tuple) or len(elt.elts) != 2:
+                continue
+            action = elt.elts[1]
+            if isinstance(action, _ast.List):
+                argvs.append(tuple(a.value for a in action.elts
+                                   if isinstance(a, _ast.Constant)))
+            elif isinstance(action, _ast.Name):
+                calls.append(action.id)
+        return argvs, calls
+
+    for src, want_argv, want_calls in STAGES_SELF_TEST:
+        got = read(src)
+        if got == (want_argv, want_calls):
+            print(f"  ok  STAGES of {src.splitlines()[0]!r} -> {got}")
         else:
-            print(f"FAIL {source!r}\n     got {got}, want {want}", file=sys.stderr)
+            print(f"FAIL {src!r}\n     got {got}, want {(want_argv, want_calls)}",
+                  file=sys.stderr)
             fail = 1
-    # 계약 자체도 시험한다 — 목록이 비면 위 게이트들이 아무것도 요구하지 않는다
-    if len(REQUIRED_PREFLIGHT_COMMANDS) < 4 or len(CI_REQUIRED_STEPS) != 2:
+
+    # 실제 러너도 같은 방식으로 읽혀야 한다 — 합성 입력만 맞고 진짜가 틀리면 소용없다
+    argvs, calls, total = _stage_declarations()
+    if total >= len(REQUIRED_STAGE_COMMANDS) + len(REQUIRED_STAGE_CALLABLES):
+        print(f"  ok  the real runner declares {total} stages "
+              f"({len(argvs)} commands, {len(calls)} callables)")
+    else:
+        print(f"FAIL the real runner declares only {total} stages", file=sys.stderr)
+        fail = 1
+    if len(CI_REQUIRED_LINES) == 2 and len(REQUIRED_STAGE_COMMANDS) >= 4:
+        print(f"  ok  contracts declare {len(REQUIRED_STAGE_COMMANDS)} runner commands "
+              f"and {len(CI_REQUIRED_LINES)} CI lines")
+    else:
         print("FAIL the required-command contracts were emptied", file=sys.stderr)
         fail = 1
-    else:
-        print(f"  ok  contracts declare {len(REQUIRED_PREFLIGHT_COMMANDS)} preflight "
-              f"commands and {len(CI_REQUIRED_STEPS)} CI steps")
     print("self-test passed" if not fail else "self-test FAILED")
     return fail
 

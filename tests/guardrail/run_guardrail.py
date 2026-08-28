@@ -225,50 +225,6 @@ def break_ci_preflight_shell_comment(repo: Path) -> str:
     return "the real call commented out behind a placeholder command"
 
 
-def break_preflight_stage_removed(repo: Path) -> str:
-    """Delete the line that runs the judge's self-test.
-
-    This exact removal, together with a broken verdict(), produced exit 0 —
-    the gates were all present and the line calling one of them was not.
-    """
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    line = 'run "guardrail self-test" python3 tests/guardrail/run_guardrail.py --self-test\n'
-    if line not in text:
-        raise AssertionError("preflight.sh no longer runs the self-test the way this case expects")
-    p.write_text(text.replace(line, "", 1), encoding="utf-8")
-    return "preflight no longer running the judge's self-test"
-
-
-def break_preflight_stage_swapped(repo: Path) -> str:
-    """Keep the stage count but make the stage do nothing."""
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    old = 'run "guardrail self-test" python3 tests/guardrail/run_guardrail.py --self-test'
-    if old not in text:
-        raise AssertionError("preflight.sh no longer runs the self-test the way this case expects")
-    p.write_text(text.replace(old, 'run "guardrail self-test" echo skipping', 1), encoding="utf-8")
-    return "a preflight stage replaced by a no-op that keeps the count right"
-
-
-def break_preflight_runner(repo: Path) -> str:
-    """Keep the call line and the stage count; make the runner skip the command.
-
-    The stage list still names the self-test and STAGES_EXPECTED still agrees
-    with it, yet the judge is never run. Watching the call line is not watching
-    the run — the gate has to pin the runner itself.
-    """
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    old = r"""run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }"""
-    if old not in text:
-        raise AssertionError("preflight.sh's run() is not the shape this case rewrites")
-    new = (r"""run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); """
-           r"""case "$*" in *--self-test*) return 0;; esac; "$@" || fail=1; }""")
-    p.write_text(text.replace(old, new, 1), encoding="utf-8")
-    return "a runner that counts a stage it never executes"
-
-
 def break_ci_preflight_echo(repo: Path) -> str:
     """CI names preflight inside a real run: step, and only prints it.
 
@@ -316,45 +272,6 @@ def break_dead_api_build_dir(repo: Path) -> str:
     return "a removed API in docs/build/, which this repository writes"
 
 
-def break_preflight_exit_code(repo: Path) -> str:
-    """`exit 0` in place of `exit $fail`.
-
-    Every gate can go red and the script still reports success. No self-check
-    inside preflight can see this — the script cannot inspect its own exit
-    code — so the pairing is this gate plus the integrity step CI runs after.
-    """
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    if "\nexit $fail\n" not in text:
-        raise AssertionError("preflight.sh no longer ends with `exit $fail`")
-    p.write_text(text.replace("\nexit $fail\n", "\nexit 0\n", 1), encoding="utf-8")
-    return "preflight reporting success no matter what its stages did"
-
-
-def break_preflight_runner_duplicate(repo: Path) -> str:
-    """A second run() definition; the canonical first one becomes decoration."""
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    call = 'run "guardrail self-test"'
-    if call not in text:
-        raise AssertionError("preflight.sh no longer has the self-test call line")
-    tamper = ('run() { printf \'\\n== %s\\n\' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }'.replace('"$@" || fail=1; }',
-                                'case "$*" in *--self-test*) return 0;; esac; "$@" || fail=1; }'))
-    p.write_text(text.replace(call, tamper + "\n" + call, 1), encoding="utf-8")
-    return "a second run() definition that overrides the canonical one"
-
-
-def break_preflight_runner_shadow(repo: Path) -> str:
-    """A shell function named after the interpreter — every stage becomes a no-op."""
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    call = 'run "guardrail self-test"'
-    if call not in text:
-        raise AssertionError("preflight.sh no longer has the self-test call line")
-    p.write_text(text.replace(call, 'python3() { return 0; }\n' + call, 1), encoding="utf-8")
-    return "a shell function named python3 shadowing the interpreter"
-
-
 def break_ci_integrity_step(repo: Path) -> str:
     """CI drops the step that does not trust preflight's exit code."""
     wf = repo / ".github" / "workflows" / "validation.yml"
@@ -383,38 +300,6 @@ def break_guardrail_section(repo: Path) -> str:
     return "a whole guardrail section that nothing calls any more"
 
 
-def break_preflight_exit_before(repo: Path) -> str:
-    """`exit 0` above the stages, with the real `exit $fail` still below it.
-
-    Asking only whether the line exists let this through: the script returns
-    before any stage runs, and the canonical last line is untouched.
-    """
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    call = 'run "guardrail self-test"'
-    if call not in text:
-        raise AssertionError("preflight.sh no longer has the self-test call line")
-    p.write_text(text.replace(call, "exit 0\n" + call, 1), encoding="utf-8")
-    return "an early `exit 0` with the real exit line still at the bottom"
-
-
-def break_preflight_function_keyword(repo: Path) -> str:
-    """`function run { ... }` — bash's other definition syntax.
-
-    The duplicate/shadow checks only recognised `name()`, so the canonical
-    definition could stay in place while this one actually ran.
-    """
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    call = 'run "guardrail self-test"'
-    if call not in text:
-        raise AssertionError("preflight.sh no longer has the self-test call line")
-    p.write_text(text.replace(
-        call, 'function run { stages_run=$((stages_run + 1)); return 0; }\n' + call, 1),
-        encoding="utf-8")
-    return "a `function run { }` no-op overriding the canonical runner"
-
-
 def break_enforcement_emptied(repo: Path) -> str:
     """The enforcement section still runs, with nothing left to measure."""
     p = repo / "tests" / "guardrail" / "run_guardrail.py"
@@ -426,26 +311,72 @@ def break_enforcement_emptied(repo: Path) -> str:
     return "an emptied enforcement list — the section runs and proves nothing"
 
 
-def break_preflight_fail_reset(repo: Path) -> str:
-    """`fail=0` again after the stages — every stage runs, every failure erased."""
+def break_preflight_wrapper(repo: Path) -> str:
+    """Put shell back into the wrapper.
+
+    The whole point of the two-line wrapper is that there is no shell left to
+    subvert. One extra effective line reopens that door, so the gate pins the
+    file's effective lines exactly rather than trying to interpret them.
+    """
     p = repo / "scripts" / "preflight.sh"
     text = p.read_text(encoding="utf-8")
-    marker = '\nif [ "$stages_run" -ne "$STAGES_EXPECTED" ]'
+    marker = "exec python3"
     if marker not in text:
-        raise AssertionError("preflight.sh no longer has the stage-count block")
-    p.write_text(text.replace(marker, "\nfail=0" + marker, 1), encoding="utf-8")
-    return "a second `fail=0` that erases every failure after the stages ran"
+        raise AssertionError("preflight.sh no longer execs the runner")
+    p.write_text(text.replace(marker, "python3() { return 0; }\nexec python3", 1),
+                 encoding="utf-8")
+    return "shell put back into the wrapper that exists to have none"
 
 
-def break_preflight_trap(repo: Path) -> str:
-    """An EXIT trap that replaces the result after every stage has run."""
-    p = repo / "scripts" / "preflight.sh"
+def break_stage_removed(repo: Path) -> str:
+    """Delete the stage that runs the judge's self-test."""
+    p = repo / "scripts" / "preflight_runner.py"
     text = p.read_text(encoding="utf-8")
-    call = 'run "guardrail self-test"'
-    if call not in text:
-        raise AssertionError("preflight.sh no longer has the self-test call line")
-    p.write_text(text.replace(call, "trap 'exit 0' EXIT\n" + call, 1), encoding="utf-8")
-    return "an EXIT trap that reports success whatever the stages did"
+    line = ('    ("guardrail self-test", [PY, "tests/guardrail/run_guardrail.py", '
+            '"--self-test"]),\n')
+    if line not in text:
+        raise AssertionError("the runner no longer declares the self-test stage this way")
+    p.write_text(text.replace(line, "", 1), encoding="utf-8")
+    return "the stage that runs the judge's self-test deleted from STAGES"
+
+
+def break_stage_swapped(repo: Path) -> str:
+    """Keep the stage and its label; point it at something harmless."""
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    old = '[PY, "tests/guardrail/run_guardrail.py", "--self-test"]'
+    if old not in text:
+        raise AssertionError("the runner no longer declares the self-test stage this way")
+    p.write_text(text.replace(old, '[PY, "-c", "pass"]', 1), encoding="utf-8")
+    return "a stage kept in the list but pointed at a no-op"
+
+
+def break_stage_callable_dropped(repo: Path) -> str:
+    """Drop a Python stage from the list while its function stays behind."""
+    p = repo / "scripts" / "preflight_runner.py"
+    text = p.read_text(encoding="utf-8")
+    line = '    ("every JSON parses", stage_json_parses),\n'
+    if line not in text:
+        raise AssertionError("the runner no longer declares the JSON stage this way")
+    p.write_text(text.replace(line, "", 1), encoding="utf-8")
+    return "a Python stage removed from STAGES while its function remains"
+
+
+def break_ci_preflight_decoy(repo: Path) -> str:
+    """A byte-identical copy of the required line, hidden where nothing runs it.
+
+    An earlier parser read `run:` by name and would have accepted this as the
+    step. Pinning the line by count turns a decoy into two occurrences.
+    """
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    marker = "    runs-on: ubuntu-latest\n"
+    if marker not in text:
+        raise AssertionError("validation.yml no longer declares runs-on the expected way")
+    wf.write_text(text.replace(
+        marker, marker + "    env:\n      NOTES: |\n"
+                "        run: bash scripts/preflight.sh\n", 1), encoding="utf-8")
+    return "a decoy copy of the gate line inside an env block scalar"
 
 
 def break_nest_marker_tracked(repo: Path) -> str:
@@ -491,39 +422,6 @@ def break_ci_preflight_swallowed(repo: Path) -> str:
     wf.write_text(text.replace(line, "        run: bash scripts/preflight.sh || true\n", 1),
                   encoding="utf-8")
     return "CI swallowing preflight's exit code with `|| true`"
-
-
-def break_preflight_runner_continuation(repo: Path) -> str:
-    """A redefinition split by a line continuation.
-
-    Bash removes `\\` + newline before parsing, so this is a real definition of
-    `run`. A line-oriented regex sees two lines that are not one.
-
-    The split has to fall *inside* the name for this to test the join: breaking
-    it as `r\\` + `un()` leaves a line defining `un`, which the allow-list
-    catches on its own — the case would pass without the join ever running.
-    """
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    call = 'run "guardrail self-test"'
-    if call not in text:
-        raise AssertionError("preflight.sh no longer has the self-test call line")
-    p.write_text(text.replace(
-        call, 'run\\\n() { stages_run=$((stages_run + 1)); return 0; }\n' + call, 1),
-        encoding="utf-8")
-    return "a `run` redefinition hidden behind a line continuation"
-
-
-def break_preflight_shadow_subshell(repo: Path) -> str:
-    """A function whose body is a subshell on the following lines."""
-    p = repo / "scripts" / "preflight.sh"
-    text = p.read_text(encoding="utf-8")
-    call = 'run "guardrail self-test"'
-    if call not in text:
-        raise AssertionError("preflight.sh no longer has the self-test call line")
-    p.write_text(text.replace(call, "python3 ()\n(\n  return 0\n)\n" + call, 1),
-                 encoding="utf-8")
-    return "a python3 function whose body is a subshell block"
 
 
 def break_dead_api_duplicate_line(repo: Path) -> str:
@@ -576,28 +474,21 @@ CASES = {
     "readme-rule-docs": break_readme_section_count,
     "readme-rule-name": break_readme_rule_name,
     "ci-preflight-shell-comment": break_ci_preflight_shell_comment,
-    "preflight-stages": break_preflight_stage_removed,
-    "preflight-stage-swapped": break_preflight_stage_swapped,
     "ci-runs-preflight": break_ci_runs_preflight,
     "ci-preflight-comment-only": break_ci_preflight_comment_only,
     "ci-preflight-echo-only": break_ci_preflight_echo,
-    "preflight-run-tampered": break_preflight_runner,
     "dead-api-stale-allowlist": break_dead_api_stale_allowlist,
     "dead-api-build-dir": break_dead_api_build_dir,
-    "preflight-exit-code": break_preflight_exit_code,
-    "preflight-runner-duplicate": break_preflight_runner_duplicate,
-    "preflight-runner-shadow": break_preflight_runner_shadow,
     "ci-integrity-step": break_ci_integrity_step,
+    "preflight-stages": break_preflight_wrapper,
+    "preflight-stage-removed": break_stage_removed,
+    "preflight-stage-swapped": break_stage_swapped,
+    "preflight-stage-callable-dropped": break_stage_callable_dropped,
+    "ci-preflight-decoy": break_ci_preflight_decoy,
     "nest-marker-tracked": break_nest_marker_tracked,
-    "preflight-fail-reset": break_preflight_fail_reset,
-    "preflight-trap": break_preflight_trap,
     "ci-preflight-swallowed": break_ci_preflight_swallowed,
     "ci-preflight-action-input": break_ci_preflight_action_input,
-    "preflight-runner-continuation": break_preflight_runner_continuation,
-    "preflight-shadow-subshell": break_preflight_shadow_subshell,
     "guardrail-section-removed": break_guardrail_section,
-    "preflight-exit-before": break_preflight_exit_before,
-    "preflight-function-keyword": break_preflight_function_keyword,
     "enforcement-emptied": break_enforcement_emptied,
     "dead-api-duplicate-line": break_dead_api_duplicate_line,
 }
@@ -1053,12 +944,11 @@ PREFLIGHT_ENFORCEMENT = [
      "tests/guardrail/run_guardrail.py",
      '    if result.returncode == 0:\n        return "did NOT fail"\n',
      '    return None\n    if result.returncode == 0:\n        return "did NOT fail"\n'),
-    ("the validator's workflow parser",
+    ("the validator's stage reader",
      "validator self-test",
      "scripts/validate_repository.py",
-     "    lines, out, i, item_key_indent = text.splitlines(), [], 0, None\n",
-     "    return []\n"
-     "    lines, out, i, item_key_indent = text.splitlines(), [], 0, None\n"),
+     "    tree = ast.parse(src)\n",
+     "    return [], [], 0\n    tree = ast.parse(src)\n"),
 ]
 
 
@@ -1303,24 +1193,17 @@ def main() -> int:
                "ci-preflight-comment-only": "ci-runs-preflight",
                "readme-rule-docs": "lint-rule-docs",
                "readme-rule-name": "lint-rule-docs",
-               "preflight-stage-swapped": "preflight-stages",
-               "preflight-run-tampered": "preflight-stages",
-               "preflight-exit-code": "preflight-stages",
                "guardrail-section-removed": "preflight-stages",
-               "preflight-exit-before": "preflight-stages",
-               "preflight-function-keyword": "preflight-stages",
                "enforcement-emptied": "preflight-stages",
                "dead-api-duplicate-line": "dead-api",
-               "preflight-runner-duplicate": "preflight-stages",
-               "preflight-runner-shadow": "preflight-stages",
                "ci-integrity-step": "ci-runs-preflight",
+               "preflight-stage-removed": "preflight-stages",
+               "preflight-stage-swapped": "preflight-stages",
+               "preflight-stage-callable-dropped": "preflight-stages",
+               "ci-preflight-decoy": "ci-runs-preflight",
                "nest-marker-tracked": "preflight-stages",
-               "preflight-fail-reset": "preflight-stages",
-               "preflight-trap": "preflight-stages",
                "ci-preflight-swallowed": "ci-runs-preflight",
                "ci-preflight-action-input": "ci-runs-preflight",
-               "preflight-runner-continuation": "preflight-stages",
-               "preflight-shadow-subshell": "preflight-stages",
                "dead-api-stale-allowlist": "dead-api",
                "dead-api-build-dir": "dead-api",
                "ci-preflight-echo-only": "ci-runs-preflight",
