@@ -2,7 +2,7 @@
      attribution block added, install target retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.10.3-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.11.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/실행모드-3종-teal.svg" alt="3 Execution Modes">
@@ -211,7 +211,9 @@ cp -r skills/evolve ~/.claude/skills/harness-evolve
 
 ## 기여
 
-`bash scripts/preflight.sh` 한 줄이 모든 게이트를 돌린다. CI 도 같은 스크립트를 부른다.
+`bash scripts/preflight.sh` 한 줄이 모든 게이트를 돌린다. CI 도 같은 스크립트를 부른다. `pyyaml` 이 필요하다
+(`python3 -m pip install pyyaml`) — CI 계약 게이트가 워크플로우를 텍스트가 아니라 «파싱» 해서
+읽고, 파서가 없으면 실패로 닫힌다.
 자세한 내용은 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 라이선스

@@ -582,6 +582,54 @@ def break_ci_custom_shell(repo: Path) -> str:
     return "a custom shell that reports success without running the step"
 
 
+def _edit_workflow(repo: Path, anchor: str, replacement: str) -> None:
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    if anchor not in text:
+        raise AssertionError(f"validation.yml no longer contains {anchor.strip()!r}")
+    wf.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
+
+
+def break_ci_needs_skipped_job(repo: Path) -> str:
+    """A gate job that `needs:` a conditional job is skipped when that job is.
+
+    Every required line stays exactly where it is; GitHub simply never runs
+    them. Review 14 got this past the validator and past actionlint.
+    """
+    _edit_workflow(repo, "    runs-on: ubuntu-latest\n",
+                   "    runs-on: ubuntu-latest\n    needs: [precheck]\n")
+    return "a gate job that inherits a skip from a prerequisite job"
+
+
+def break_ci_bash_env(repo: Path) -> str:
+    """`BASH_ENV` runs a file before every `run:` — `exit 0` there ends the job."""
+    _edit_workflow(repo, "    runs-on: ubuntu-latest\n",
+                   "    runs-on: ubuntu-latest\n    env:\n"
+                   "      BASH_ENV: .ci/preamble.sh\n")
+    return "the shell reprogrammed under the gate without touching a run: line"
+
+
+def break_ci_pr_types(repo: Path) -> str:
+    """`types: [closed]` — opening or updating a pull request starts nothing."""
+    _edit_workflow(repo, "  pull_request:\n",
+                   "  pull_request:\n    types: [closed]\n")
+    return "a pull_request trigger narrowed to an activity that never gates a merge"
+
+
+def break_ci_push_tags_only(repo: Path) -> str:
+    """`tags:` without `branches:` — pushing a branch never starts the workflow."""
+    _edit_workflow(repo, "  push:\n    branches:\n      - main\n",
+                   '  push:\n    tags: ["**"]\n')
+    return "a push trigger that fires on tags only"
+
+
+def break_ci_branch_negated(repo: Path) -> str:
+    """`["**", "!main"]` passes a "does it list main-or-**" check and excludes main."""
+    _edit_workflow(repo, "  push:\n    branches:\n      - main\n",
+                   '  push:\n    branches: ["**", "!main"]\n')
+    return "a branch pattern list that names the protected branch and takes it back"
+
+
 def break_ci_quoted_if(repo: Path) -> str:
     """The same condition written as a quoted key with a space before the colon."""
     wf = repo / ".github" / "workflows" / "validation.yml"
@@ -720,6 +768,11 @@ CASES = {
     "ci-yaml-fake-step": break_ci_yaml_fake_step,
     "ci-branch-filter": break_ci_branch_filter,
     "ci-probe-switch": break_ci_probe_switch,
+    "ci-needs-skipped-job": break_ci_needs_skipped_job,
+    "ci-bash-env": break_ci_bash_env,
+    "ci-pr-types": break_ci_pr_types,
+    "ci-push-tags-only": break_ci_push_tags_only,
+    "ci-branch-negated": break_ci_branch_negated,
     "runner-dead-code": break_runner_dead_code,
     "runner-alias-mutation": break_runner_alias_mutation,
     "preflight-unicode-break": break_preflight_unicode_break,
@@ -1176,7 +1229,45 @@ def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
 # 환경변수는 워크플로우 밖에서도 켤 수 있어(composite action·`$GITHUB_ENV`·
 # preflight 안의 export) 강제 확인을 조용히 끌 수 있었다. `preflight-stages` 가
 # 이 파일이 저장소에 있으면 거부한다.
-NEST_ENV = "OH_MY_HARNESS_PROBE"   # 파일이 아니라 환경변수 — 리뷰 13
+# 프로브 안에서는 «프로브만이» 잡는 케이스를 증명할 수 없다 — 재귀를 끊느라 그
+# 프로브가 꺼져 있기 때문이다. 그 여섯 개만 건너뛰고 나머지 여든 몇 개는 그대로 돈다.
+# 스위트 전체를 건너뛰던 판이 리뷰 14 에서 사각지대가 됐다: 「guardrail suite」 단계는
+# 실행을 통째로 생략해도 아무도 몰랐다.
+PROBE_ONLY_CASES = ("runner-main-gutted", "runner-stages-mutated", "runner-argv-head",
+                    "runner-selective", "runner-dead-code", "runner-alias-mutation")
+
+
+def nest_depth() -> int:
+    """How deep inside a preflight run this process is. 0 = the outermost run.
+
+    A boolean was not enough. The validator's probe needs this suite to *run*
+    (otherwise the "guardrail suite" stage is a blind spot — review 14 skipped
+    it outright and preflight stayed green). But this suite itself launches
+    three more preflight runs, and inside those the suite is measuring nothing
+    and costs ten seconds each. A boolean cannot tell those two apart; a depth
+    can. Depth 1 runs the cases, depth 2 and beyond does not.
+    """
+    try:
+        return int(os.environ.get(NEST_ENV) or 0)
+    except ValueError:
+        return 1                     # unreadable value: assume nested, never deeper
+
+
+def deeper_env() -> dict[str, str]:
+    """Depth for a preflight run *this suite* launches — never below 2.
+
+    None of the three runs below is measuring the case suite: they ask whether
+    the declared stages ran, and whether a named stage goes red. Letting the
+    suite run inside them added 90 seconds and proved nothing. Depth 1 is
+    reserved for the validator's probe, which *is* measuring it.
+    """
+    return dict(os.environ, **{NEST_ENV: str(max(nest_depth() + 1, 2))})
+
+# 프로브 안임을 알리는 신호. 파일이 아니라 환경변수다 — 파일이면 CI 가 앞 단계에서
+# `touch` 한 줄로 프로브를 끌 수 있었다(리뷰 13). 이 신호가 끄는 것은 «preflight 를
+# 다시 부르는 절» 하나뿐이다. 스위트 전체를 건너뛰게 두었더니 그 단계가 프로브의
+# 사각지대가 됐다(리뷰 14) — 신호가 곧 검사 면제권이면 안 된다.
+NEST_ENV = "OH_MY_HARNESS_PROBE"
 
 # (무엇을 깨뜨리나, 파일, 앵커, 대체) — 각각 «그 단계만» 잡는 결함이다.
 PREFLIGHT_ENFORCEMENT = [
@@ -1262,7 +1353,7 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
     The pristine half needs no separate run: this suite *is* a preflight stage,
     so a green outer preflight already proves the clean tree passes.
     """
-    if os.environ.get(NEST_ENV):
+    if nest_depth():
         print("  --  preflight enforcement: skipped (already inside a preflight run)")
         return
     # 목록이 «있는지» 는 밖에서 세지만, 그 사이에 비워지는 길이 있다
@@ -1281,7 +1372,7 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
         copy_tree(clean)
         res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=clean,
                              capture_output=True, text=True,
-                             env=dict(os.environ, **{NEST_ENV: "1"}))
+                             env=deeper_env())
         declared = [m.group(1) for m in re.finditer(
             r'^\s{4}\("([^"]+)",', (clean / "scripts" / "preflight_runner.py")
             .read_text(encoding="utf-8"), re.M)]
@@ -1310,14 +1401,14 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
             # a mutation that does not parse is a syntax error, not a verdict
             syn = subprocess.run([sys.executable, "-m", "py_compile", str(target)],
                                  capture_output=True, text=True,
-                                 env=dict(os.environ, **{NEST_ENV: "1"}))
+                                 env=deeper_env())
             if syn.returncode != 0:
                 failures.append(f"preflight enforcement: breaking {label} left the file "
                                 f"unparseable — {syn.stderr.strip().splitlines()[-1][:100]}")
                 continue
             res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=broken,
                                  capture_output=True, text=True,
-                                 env=dict(os.environ, **{NEST_ENV: "1"}))
+                                 env=deeper_env())
             if res.returncode == 0:
                 failures.append(
                     f"preflight enforcement: {label} was broken and "
@@ -1450,11 +1541,8 @@ def main() -> int:
     if args.self_test:
         return self_test()
 
-    # 프로브 안이다. 프로브가 재는 것은 «1단계가 실제로 돌았는가» 뿐이고, 이 스위트를
-    # 한 번 더 도는 데 10초가 든다. 자기시험(--self-test)은 위에서 이미 지나갔으므로
-    # 프로브가 보려는 것은 그대로 측정된다.
-    if os.environ.get(NEST_ENV):
-        print("guardrail suite: skipped (inside a preflight probe)")
+    if nest_depth() >= 2:
+        print(f"guardrail suite: skipped — nothing at depth {nest_depth()} measures it")
         return 0
 
     known = subprocess.run(
@@ -1471,6 +1559,11 @@ def main() -> int:
                "enforcement-emptied": "preflight-stages",
                "dead-api-duplicate-line": "dead-api",
                "ci-integrity-step": "ci-runs-preflight",
+               "ci-needs-skipped-job": "ci-runs-preflight",
+               "ci-bash-env": "ci-runs-preflight",
+               "ci-pr-types": "ci-runs-preflight",
+               "ci-push-tags-only": "ci-runs-preflight",
+               "ci-branch-negated": "ci-runs-preflight",
                "preflight-stage-removed": "preflight-stages",
                "preflight-stage-swapped": "preflight-stages",
                "preflight-stage-callable-dropped": "preflight-stages",
@@ -1508,6 +1601,14 @@ def main() -> int:
         clean_by_gate: dict[str, subprocess.CompletedProcess] = {}
 
         for check, breaker in CASES.items():
+            # 중첩 실행이 필요한 것은 «판정» 하나다. 이미 빨간불이면 남은 케이스는
+            # 목록을 채울 뿐이고, 그 시간이 그대로 바깥 preflight 의 시간이 된다.
+            if failures and nest_depth():
+                break
+            if check in PROBE_ONLY_CASES and nest_depth():
+                print(f"  --  {check:22} skipped: only the behavioural probe can catch "
+                      f"this, and the probe is off inside a probe")
+                continue
             # 1. the pristine tree must pass, or the case proves nothing
             gate = ALIASES.get(check, check)
             if gate not in clean_by_gate:
@@ -1543,6 +1644,13 @@ def main() -> int:
                 if args.verbose:
                     print("      " + result.stderr.strip().replace("\n", "\n      "))
             shutil.rmtree(broken)
+
+    if failures and nest_depth():
+        print("\nGuardrail suite failed (stopped early — a nested run reports the "
+              "verdict, not the inventory):", file=sys.stderr)
+        for f in failures:
+            print(f"- {f}", file=sys.stderr)
+        return 1
 
     guardrail_harness_lint(failures, args.verbose)
     guardrail_valid_variants(failures, args.verbose)

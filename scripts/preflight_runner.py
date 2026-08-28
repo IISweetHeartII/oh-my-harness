@@ -118,8 +118,11 @@ def main() -> int:
             failed.append(label)
     print()
     if failed:
-        print(f"preflight: FAILED — do not push ({len(failed)}/{len(STAGES)} stages: "
-              f"{', '.join(failed)})")
+        # 한 줄에 한 단계씩. 쉼표로 이어 붙였더니 라벨에 든 쉼표가 목록을 쪼갰고,
+        # 읽는 쪽이 한 단계를 둘로 셌다 — 구분자는 데이터에 나올 수 없어야 한다.
+        print(f"preflight: FAILED — do not push ({len(failed)}/{len(STAGES)} stages)")
+        for label in failed:
+            print(f"  failed stage: {label}")
         return 1
     print(f"preflight: all gates green ({len(STAGES)} stages)")
     return 0

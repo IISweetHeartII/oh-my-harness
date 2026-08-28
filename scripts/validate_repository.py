@@ -623,11 +623,6 @@ REQUIRED_GUARDRAIL_SECTIONS = ("guardrail_harness_lint", "guardrail_valid_varian
                                "guardrail_preflight_enforces",
                                "guardrail_allowlist_suggestion")
 
-# 가드레일이 preflight 를 재귀 없이 돌리기 위한 표시. 사본 안에만 만드는 «파일» 이다 —
-# 환경변수로 두었더니 워크플로우 밖에서 켜는 길이 여럿이었다(composite action 이
-# `$GITHUB_ENV` 에 쓰기 · self-hosted runner 환경 · preflight 안에서 export).
-GUARDRAIL_NEST_MARKER = ".guardrail-nested"
-
 # preflight.sh 는 이제 «두 줄» 이다 — 러너를 exec 할 뿐이다. 주석을 뺀 유효 줄이
 # 정확히 이것이어야 한다. 셸이 두 줄뿐이면 셸로 할 수 있는 우회도 두 줄만큼이다.
 PREFLIGHT_WRAPPER_LINES = [
@@ -657,6 +652,11 @@ CI_REQUIRED_STEP_RUNS = [
 ]
 # 프로브 신호를 CI 가 켜면 프로브가 꺼진다. 이름이 워크플로우 어디에 나오든 막는다.
 CI_FORBIDDEN_TEXT = ("OH_MY_HARNESS_PROBE", ".guardrail-nested")
+
+# 실행 환경을 갈아끼우는 변수들. 이름 목록이라 닫히지 않는다 —
+# docs/OPEN-FINDINGS.md §C-13 에 한계로 적어 두었다.
+CI_FORBIDDEN_ENV = {"BASH_ENV", "PATH", "ENV", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES",
+                    "PYTHONSTARTUP", "PYTHONPATH", "GITHUB_ENV", "GITHUB_PATH"}
 
 CI_FORBIDDEN_MENTIONS = ("scripts/validate_repository.py",
                          "tests/guardrail/run_guardrail.py",
@@ -718,27 +718,88 @@ def _stage_declarations_from(path: Path, errors: list[str] | None = None
 # 파일이면 CI 가 앞 단계에서 `touch` 한 줄로 프로브를 통째로 끌 수 있었다(리뷰 13).
 PROBE_ENV = "OH_MY_HARNESS_PROBE"
 
-# 프로브가 심는 결함과, 그 결과 «빨개져야 하는» 단계. 나머지 단계는 초록이어야 한다.
+# 프로브가 심는 결함. 단계마다 하나씩 — 여덟 개 전부다.
 #
-# 왜 여러 개이고 왜 초록도 요구하나: 하나만 깨뜨리면 러너가
-# `if label != "guardrail self-test": continue` 로 그 단계만 돌리고 나머지 일곱을
-# 건너뛸 수 있다(리뷰 13에서 실제로 통과했다). 그리고 프로브라는 걸 알아채고 «항상
-# 실패» 를 흉내 내는 것도 막아야 한다. 빨강과 초록의 «패턴» 을 맞히려면 실제로 재는
-# 수밖에 없다.
-PROBE_EXPECT_RED = ("guardrail self-test", "every JSON parses",
-                    "no merge conflict markers")
+# 리뷰 14가 세 개짜리 판을 뚫었다: 재지 않는 다섯 단계는 «실행 자체를 건너뛰어도»
+# 통과했다(`if label == "repository gates": continue` 한 줄, 실측 rc=0). 재는 단계만
+# 도는 러너와 전부 도는 러너를 구별하려면, 재는 범위가 곧 전부여야 한다.
+#
+# 그래서 기대값을 여기 적지 않고 러너의 STAGES 에서 «읽는다». 단계를 새로 더하고
+# 여기 결함을 안 심으면 그 단계가 초록으로 돌아와 프로브가 실패한다 — 새 단계는
+# 심을 결함과 함께 들어오라는 뜻이고, 그게 맞는 방향의 fail-closed 다.
+
+
+def _stage_labels(path: Path) -> list[str]:
+    """STAGES 의 라벨만 읽는다. 선언 파서와 같은 자리를 보되 반환을 안 바꾼다."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(getattr(x, "id", None) == "STAGES" for x in node.targets):
+            continue
+        if not isinstance(node.value, ast.List):
+            return []
+        return [e.elts[0].value for e in node.value.elts
+                if isinstance(e, ast.Tuple) and e.elts
+                and isinstance(e.elts[0], ast.Constant)
+                and isinstance(e.elts[0].value, str)]
+    return []
+
+
+def _replace_once(path: Path, anchor: str, replacement: str) -> str | None:
+    """앵커가 없으면 «심었다» 고 말하지 않는다 — 빗나간 주입은 결과가 아니라 사고다."""
+    text = path.read_text(encoding="utf-8")
+    if anchor not in text:
+        return f"{path.name} no longer contains the anchor {anchor.strip()[:60]!r}"
+    path.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
+    return None
 
 
 def _plant_probe_defects(copy: Path) -> str | None:
-    """Plant one defect per expected-red stage. Returns a reason if it cannot."""
-    judge = copy / "tests" / "guardrail" / "run_guardrail.py"
-    anchor = '    if result.returncode == 0:\n        return "did NOT fail"\n'
-    text = judge.read_text(encoding="utf-8")
-    if anchor not in text:
-        return "the judge's anchor is gone"
-    judge.write_text(text.replace(anchor, "    return None\n" + anchor, 1),
-                     encoding="utf-8")
+    """Plant one defect per stage, so every stage has to run to be seen failing."""
+    edits = [
+        # 1. guardrail self-test — 판정 함수가 «실패했다» 를 못 말하게 한다
+        (copy / "tests/guardrail/run_guardrail.py",
+         '    if result.returncode == 0:\n        return "did NOT fail"\n',
+         '    return None\n    if result.returncode == 0:\n        return "did NOT fail"\n'),
+        # 2. validator self-test — 자기시험이 부르는 운영 파서를 빈손으로 만든다
+        (copy / "scripts/validate_repository.py",
+         '    tree = ast.parse(path.read_text(encoding="utf-8"))\n',
+         '    return [], [], 0\n    tree = ast.parse(path.read_text(encoding="utf-8"))\n'),
+        # 4. guardrail suite — lint 규칙 하나를 무력화하면 그 규칙의 케이스가
+        #    «did NOT fail» 로 돌아온다. (3·5~8 은 아래에서 따로 심는다)
+        (copy / "scripts/harness_lint.py",
+         '                out.append(Finding("agent-frontmatter", h.rel(p), f"frontmatter missing {field}:"))\n',
+         '                pass\n'),
+        # 6. nothing-to-lint returns 2, not 0
+        (copy / "scripts/harness_lint.py",
+         '        print(f"no harness found under {h.claude} — nothing to lint", file=sys.stderr)\n        return 2\n',
+         '        print(f"no harness found under {h.claude} — nothing to lint", file=sys.stderr)\n        return 0\n'),
+    ]
+    for path, anchor, replacement in edits:
+        why = _replace_once(path, anchor, replacement)
+        if why:
+            return why
+
+    # 3. repository gates — 버전 정합성을 깬다(파싱은 그대로 되어야 하므로 값만 바꾼다)
+    plugin = copy / ".claude-plugin" / "plugin.json"
+    try:
+        data = json.loads(plugin.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"cannot rewrite plugin.json to break version consistency: {exc}"
+    data["version"] = "0.0.0-probe"
+    plugin.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    # 5. reference harness — 깨끗해야 할 픽스처에 이름이 겹치는 에이전트를 넣는다
+    agents = sorted((copy / "tests/fixtures/clean-harness/.claude/agents").glob("*.md"))
+    if not agents:
+        return "the reference harness fixture has no agents to duplicate"
+    first = agents[0].read_text(encoding="utf-8")
+    (agents[0].parent / "probe-duplicate.md").write_text(first, encoding="utf-8")
+
+    # 7. every JSON parses
     (copy / "docs" / "probe-invalid.json").write_text("{ not json", encoding="utf-8")
+    # 8. no merge conflict markers
     (copy / "docs" / "probe-conflict.md").write_text(
         "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> other\n", encoding="utf-8")
     return None
@@ -753,13 +814,22 @@ def _preflight_actually_enforces(errors: list[str]) -> None:
     Source text is not behaviour.
 
     One planted defect is not enough either: a runner that skips every stage
-    except the one being probed passed that version. So several defects go in
-    at once, in different stages, and the stages that were *not* sabotaged must
-    come back green. Reproducing that pattern requires actually running them —
-    which is the property under test.
+    except the one being probed passed that version. Three were not enough
+    either — review 14 skipped one of the five unmeasured stages and the run
+    stayed green. So a defect goes into *every* stage and every stage must come
+    back red. A stage that does not run cannot be seen failing.
+
+    What this does not prove: the runner reports its own verdict, so a runner
+    rewritten to print that summary without running anything passes. It is
+    inside the trust boundary — see §D-7 in docs/OPEN-FINDINGS.md.
     """
     if os.environ.get(PROBE_ENV):
         return                        # already inside a probe; do not recurse
+    expected = _stage_labels(ROOT / "scripts" / "preflight_runner.py")
+    if not expected:
+        errors.append("the runner declares no readable stage labels, so a probe would "
+                      "have nothing to compare its result against")
+        return
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / "probe"
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(
@@ -786,34 +856,34 @@ def _preflight_actually_enforces(errors: list[str]) -> None:
                           "copy — a gate that never returns blocks every push")
             return
     if res.returncode == 0:
-        errors.append("scripts/preflight.sh reported success on a tree with planted "
-                      "defects in three stages — something between the stage list and "
+        errors.append("scripts/preflight.sh reported success on a tree with a planted "
+                      "defect in every stage — something between the stage list and "
                       "the process exit is not running them")
         return
-    # 단계별 판정은 러너 자신의 요약 줄에서 읽는다. 본문에서 "FAIL" 을 찾으면
-    # 단계마다 실패를 다르게 표현한다는 사실에 걸린다("Invalid JSON:" 처럼).
-    m = re.search(r"^preflight: FAILED[^(]*\((\d+)/(\d+) stages: (.+)\)$",
-                  res.stdout, re.M)
+    # 단계별 판정은 러너 자신의 요약에서 읽는다. 본문에서 "FAIL" 을 찾으면 단계마다
+    # 실패를 다르게 표현한다는 사실에 걸린다("Invalid JSON:" 처럼).
+    m = re.search(r"^preflight: FAILED[^(]*\((\d+)/(\d+) stages\)$", res.stdout, re.M)
     if not m:
         errors.append("scripts/preflight.sh did not report which stages failed — "
                       "without a per-stage verdict a red run is not evidence that any "
                       "particular stage ran")
         return
-    failed = {s.strip() for s in m.group(3).split(",")}
+    failed = set(re.findall(r"^ *failed stage: (.+)$", res.stdout, re.M))
     ran = {part.partition("\n")[0].strip()
            for part in ("\n" + res.stdout).split("\n== ")[1:]}
-    missing = [s for s in PROBE_EXPECT_RED if s not in ran]
+    missing = sorted(set(expected) - ran)
     if missing:
         errors.append(f"these stages never ran on the probe copy: {missing} "
                       f"(stages seen: {sorted(ran)})")
         return
-    if failed != set(PROBE_EXPECT_RED):
+    if failed != set(expected):
+        green = sorted(set(expected) - failed)
+        extra = sorted(failed - set(expected))
         errors.append(
-            f"the probe planted defects in {sorted(PROBE_EXPECT_RED)} and preflight "
-            f"reported {sorted(failed)} as failed. Stages that were sabotaged and came "
-            f"back green are not doing their work; stages that failed with nothing "
-            f"planted mean the run is not reporting per stage, so neither result is "
-            f"evidence.")
+            f"the probe planted a defect in all {len(expected)} stages and preflight "
+            f"reported {len(failed)} as failed. Sabotaged but green: {green} — a stage "
+            f"that cannot be seen failing is a stage nothing proves is running. "
+            f"Failed but not in the stage list: {extra}.")
 
 
 def check_preflight_stages(errors: list[str]) -> None:
@@ -967,9 +1037,37 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
         if job.get("continue-on-error"):
             errors.append(f"job {name!r} sets continue-on-error — a red gate would not "
                           f"block anything")
-        if "defaults" in job or "defaults" in doc:
-            errors.append(f"a `defaults:` block applies to job {name!r} — a custom shell "
-                          f"can turn every `run:` into a no-op that succeeds")
+        # `defaults:` 자체는 죄가 없다 — 위험한 것은 셸 교체 하나다
+        # (`shell: true {0}` 이면 모든 `run:` 이 아무것도 안 하고 성공한다).
+        # working-directory 가 엉뚱하면 명령을 못 찾아 «빨개지므로» fail-closed 다.
+        for scope, block in (("workflow", doc.get("defaults")),
+                             (f"job {name!r}", job.get("defaults"))):
+            if isinstance(block, dict) and "shell" in (block.get("run") or {}):
+                errors.append(f"a `defaults.run.shell` applies to {scope} — a custom "
+                              f"shell turns every `run:` into a no-op that succeeds")
+        if "needs" in job:
+            errors.append(f"job {name!r} declares `needs:` — GitHub skips a job whose "
+                          f"prerequisite was skipped, so a conditional upstream job "
+                          f"switches this gate off with every required line in place")
+        if "container" in job or "services" in job:
+            errors.append(f"job {name!r} runs in a container it defines here — the "
+                          f"`python3` and `bash` the gate calls would come from that "
+                          f"image, and this file cannot say what is in it")
+        # 실행 «환경» 을 바꾸면 명령을 안 바꾸고도 명령의 뜻을 바꿀 수 있다.
+        # `BASH_ENV` 를 가리키는 파일에서 `exit 0` 하면 두 canonical 스텝이 시작되기
+        # 전에 성공 종료된다(리뷰 14 실측). PATH 는 python3·bash 를 바꿔치기한다.
+        env_scopes = [("workflow", doc.get("env")), (f"job {name!r}", job.get("env"))]
+        for step in job.get("steps") or []:
+            if isinstance(step, dict) and str(step.get("run", "")).strip() \
+                    in CI_REQUIRED_STEP_RUNS:
+                env_scopes.append((f"the gate step in job {name!r}", step.get("env")))
+        for scope, env in env_scopes:
+            if not isinstance(env, dict):
+                continue
+            hostile = sorted(k for k in env if k.upper() in CI_FORBIDDEN_ENV)
+            if hostile:
+                errors.append(f"{scope} sets {hostile} — that reprograms the shell the "
+                              f"gate runs in without touching a single `run:` line")
         for step in job.get("steps") or []:
             if not isinstance(step, dict):
                 continue
@@ -978,9 +1076,12 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
                 if "if" in step or step.get("continue-on-error"):
                     errors.append(f"the gate step in job {name!r} is conditional or "
                                   f"ignores failure")
-                if "shell" in step:
-                    errors.append(f"the gate step in job {name!r} sets a custom shell — "
-                                  f"`shell: true {{0}}` succeeds without running anything")
+                # `shell: bash` 는 ubuntu 러너의 기본값을 명시한 것뿐이다. 막을 이유가
+                # 없고, 막았더니 정상 기여자가 걸렸다(리뷰 14).
+                if step.get("shell", "bash") != "bash":
+                    errors.append(f"the gate step in job {name!r} sets "
+                                  f"`shell: {step['shell']}` — `shell: true {{0}}` "
+                                  f"succeeds without running anything")
                 continue
             for forbidden in CI_FORBIDDEN_MENTIONS:
                 if forbidden in run:
@@ -1015,7 +1116,25 @@ def _check_ci_triggers(triggers: object, errors: list[str]) -> None:
             if key in cfg:
                 errors.append(f"validation.yml filters {event} by {key} — the gate must "
                               f"run for every change, not only for some paths")
+        if event == "pull_request":
+            # `types:` 를 주면 그 활동에서만 돈다. `[closed]` 만 남기면 PR 을 갱신해도
+            # 아무 일이 없다 — 필수 줄은 전부 제자리인 채로(리뷰 14 실측).
+            types = cfg.get("types")
+            if types is not None:
+                missing = [a for a in ("opened", "synchronize", "reopened")
+                           if a not in (types or [])]
+                if missing:
+                    errors.append(f"validation.yml limits pull_request to {types} — "
+                                  f"{missing} would not start the gate, so a PR can be "
+                                  f"opened or updated without it ever running")
+        if event == "push" and "tags" in cfg and "branches" not in cfg:
+            errors.append("validation.yml triggers push on tags only — pushing a branch "
+                          "never starts the gate")
         branches = cfg.get("branches")
+        negated = [b for b in (branches or []) if isinstance(b, str) and b.startswith("!")]
+        if negated:
+            errors.append(f"validation.yml excludes {negated} from {event} — a pattern "
+                          f"list can name the protected branch and then take it back")
         if branches is not None and not any(
                 b in ("main", "**", "*") for b in (branches or [])):
             errors.append(f"validation.yml restricts {event} to {branches} — the gate "
@@ -1144,12 +1263,12 @@ def self_test() -> int:
 
     def read(src: str):
         """운영 파서를 그대로 부른다. 자기시험이 «사본» 을 시험하면 시험한 적이 없다."""
-        tmp = ROOT / "scripts" / ".self-test-runner.py"
-        tmp.write_text(src, encoding="utf-8")
-        try:
+        # 고정 경로를 쓰면 같은 이름의 사용자 파일을 지운다(리뷰 14 실측). 임시
+        # 디렉터리면 병렬 실행끼리도 안 부딪힌다.
+        with tempfile.TemporaryDirectory() as box:
+            tmp = Path(box) / "runner.py"
+            tmp.write_text(src, encoding="utf-8")
             argvs, calls, _ = _stage_declarations_from(tmp)
-        finally:
-            tmp.unlink(missing_ok=True)
         return argvs, calls
 
     for src, want_argv, want_calls in STAGES_SELF_TEST:

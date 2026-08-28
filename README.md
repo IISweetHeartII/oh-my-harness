@@ -2,7 +2,7 @@
      attribution block added, install and star-history targets retargeted. -->
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.10.3-brightgreen.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-2.11.0-brightgreen.svg" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Claude_Code-Plugin-purple.svg" alt="Claude Code Plugin">
   <img src="https://img.shields.io/badge/Execution_Modes-3-teal.svg" alt="3 Execution Modes">
@@ -214,7 +214,9 @@ A controlled A/B on 15 software-engineering tasks measured the effect of structu
 ## Contributing
 
 One command — `bash scripts/preflight.sh` — runs every gate, and CI runs the same
-script. See [CONTRIBUTING.md](CONTRIBUTING.md).
+script. It needs `pyyaml` (`python3 -m pip install pyyaml`): the gate that checks
+CI still calls preflight parses the workflow rather than reading it as text, and
+fails closed without a parser. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
