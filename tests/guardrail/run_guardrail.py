@@ -367,19 +367,6 @@ def break_ci_integrity_step(repo: Path) -> str:
     return "CI dropping the step that checks preflight's own integrity"
 
 
-def break_ci_nest_switch(repo: Path) -> str:
-    """CI setting the variable that switches off the enforcement check."""
-    wf = repo / ".github" / "workflows" / "validation.yml"
-    text = wf.read_text(encoding="utf-8")
-    line = "        run: bash scripts/preflight.sh\n"
-    if line not in text:
-        raise AssertionError("validation.yml no longer runs preflight the way this case expects")
-    wf.write_text(text.replace(
-        line, "        run: OH_MY_HARNESS_GUARDRAIL_NEST=1 bash scripts/preflight.sh\n", 1),
-        encoding="utf-8")
-    return "CI switching off the check that preflight enforces its gates"
-
-
 def break_guardrail_section(repo: Path) -> str:
     """Delete the line that runs one whole section of this suite.
 
@@ -439,17 +426,86 @@ def break_enforcement_emptied(repo: Path) -> str:
     return "an emptied enforcement list — the section runs and proves nothing"
 
 
-def break_ci_nest_job_env(repo: Path) -> str:
-    """The switch set at job level instead of inside a run: step."""
+def break_preflight_fail_reset(repo: Path) -> str:
+    """`fail=0` again after the stages — every stage runs, every failure erased."""
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    marker = '\nif [ "$stages_run" -ne "$STAGES_EXPECTED" ]'
+    if marker not in text:
+        raise AssertionError("preflight.sh no longer has the stage-count block")
+    p.write_text(text.replace(marker, "\nfail=0" + marker, 1), encoding="utf-8")
+    return "a second `fail=0` that erases every failure after the stages ran"
+
+
+def break_preflight_trap(repo: Path) -> str:
+    """An EXIT trap that replaces the result after every stage has run."""
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    call = 'run "guardrail self-test"'
+    if call not in text:
+        raise AssertionError("preflight.sh no longer has the self-test call line")
+    p.write_text(text.replace(call, "trap 'exit 0' EXIT\n" + call, 1), encoding="utf-8")
+    return "an EXIT trap that reports success whatever the stages did"
+
+
+def break_nest_marker_tracked(repo: Path) -> str:
+    """Commit the recursion marker — every checkout then skips the enforcement.
+
+    This used to be an environment variable, and a variable can be set from
+    outside the file the gate reads: a composite action writing `$GITHUB_ENV`,
+    a self-hosted runner's service environment, or a single `export` line
+    inside preflight.sh itself. A tracked file cannot hide like that.
+    """
+    marker = repo / ".guardrail-nested"
+    marker.write_text("", encoding="utf-8")
+    subprocess.run(["git", "add", "-f", ".guardrail-nested"], cwd=repo,
+                   check=True, capture_output=True)
+    return "the recursion marker committed into the repository"
+
+
+def break_ci_preflight_swallowed(repo: Path) -> str:
+    """CI runs the gate and throws its verdict away."""
     wf = repo / ".github" / "workflows" / "validation.yml"
     text = wf.read_text(encoding="utf-8")
-    marker = "    runs-on: ubuntu-latest\n"
-    if marker not in text:
-        raise AssertionError("validation.yml no longer declares runs-on the expected way")
-    wf.write_text(text.replace(
-        marker, marker + '    env:\n      OH_MY_HARNESS_GUARDRAIL_NEST: "1"\n', 1),
+    line = "        run: bash scripts/preflight.sh\n"
+    if line not in text:
+        raise AssertionError("validation.yml no longer runs preflight the way this case expects")
+    wf.write_text(text.replace(line, "        run: bash scripts/preflight.sh || true\n", 1),
+                  encoding="utf-8")
+    return "CI swallowing preflight's exit code with `|| true`"
+
+
+def break_preflight_runner_continuation(repo: Path) -> str:
+    """A redefinition split by a line continuation.
+
+    Bash removes `\\` + newline before parsing, so this is a real definition of
+    `run`. A line-oriented regex sees two lines that are not one.
+
+    The split has to fall *inside* the name for this to test the join: breaking
+    it as `r\\` + `un()` leaves a line defining `un`, which the allow-list
+    catches on its own — the case would pass without the join ever running.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    call = 'run "guardrail self-test"'
+    if call not in text:
+        raise AssertionError("preflight.sh no longer has the self-test call line")
+    p.write_text(text.replace(
+        call, 'run\\\n() { stages_run=$((stages_run + 1)); return 0; }\n' + call, 1),
         encoding="utf-8")
-    return "the enforcement switch set as a job-level env instead of in a run: step"
+    return "a `run` redefinition hidden behind a line continuation"
+
+
+def break_preflight_shadow_subshell(repo: Path) -> str:
+    """A function whose body is a subshell on the following lines."""
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    call = 'run "guardrail self-test"'
+    if call not in text:
+        raise AssertionError("preflight.sh no longer has the self-test call line")
+    p.write_text(text.replace(call, "python3 ()\n(\n  return 0\n)\n" + call, 1),
+                 encoding="utf-8")
+    return "a python3 function whose body is a subshell block"
 
 
 def break_dead_api_duplicate_line(repo: Path) -> str:
@@ -514,12 +570,16 @@ CASES = {
     "preflight-runner-duplicate": break_preflight_runner_duplicate,
     "preflight-runner-shadow": break_preflight_runner_shadow,
     "ci-integrity-step": break_ci_integrity_step,
-    "ci-nest-switch": break_ci_nest_switch,
+    "nest-marker-tracked": break_nest_marker_tracked,
+    "preflight-fail-reset": break_preflight_fail_reset,
+    "preflight-trap": break_preflight_trap,
+    "ci-preflight-swallowed": break_ci_preflight_swallowed,
+    "preflight-runner-continuation": break_preflight_runner_continuation,
+    "preflight-shadow-subshell": break_preflight_shadow_subshell,
     "guardrail-section-removed": break_guardrail_section,
     "preflight-exit-before": break_preflight_exit_before,
     "preflight-function-keyword": break_preflight_function_keyword,
     "enforcement-emptied": break_enforcement_emptied,
-    "ci-nest-job-env": break_ci_nest_job_env,
     "dead-api-duplicate-line": break_dead_api_duplicate_line,
 }
 
@@ -961,9 +1021,11 @@ def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
 
 # --------------------------------------------------------------------------
 
-# preflight 를 재귀 없이 돌리기 위한 표시. `ci-runs-preflight` 가 CI 의 실행 단계에서
-# 이 이름을 금지한다 — 아래 강제 확인을 끄는 스위치이기 때문이다.
-NEST_ENV = "OH_MY_HARNESS_GUARDRAIL_NEST"
+# preflight 를 재귀 없이 돌리기 위한 표시. 사본 안에만 만드는 파일이다 —
+# 환경변수는 워크플로우 밖에서도 켤 수 있어(composite action·`$GITHUB_ENV`·
+# preflight 안의 export) 강제 확인을 조용히 끌 수 있었다. `preflight-stages` 가
+# 이 파일이 저장소에 있으면 거부한다.
+NEST_MARKER = ".guardrail-nested"
 
 # (무엇을 깨뜨리나, 파일, 앵커, 대체) — 각각 «그 단계만» 잡는 결함이다.
 PREFLIGHT_ENFORCEMENT = [
@@ -972,11 +1034,11 @@ PREFLIGHT_ENFORCEMENT = [
      "tests/guardrail/run_guardrail.py",
      '    if result.returncode == 0:\n        return "did NOT fail"\n',
      '    return None\n    if result.returncode == 0:\n        return "did NOT fail"\n'),
-    ("the validator's _invokes",
+    ("the validator's workflow parser",
      "validator self-test",
      "scripts/validate_repository.py",
-     "    parts = re.split(",
-     "    return script in command\n    parts = re.split("),
+     "    lines, out, i = text.splitlines(), [], 0\n",
+     "    return []\n    lines, out, i = text.splitlines(), [], 0\n"),
 ]
 
 
@@ -998,8 +1060,15 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
     The pristine half needs no separate run: this suite *is* a preflight stage,
     so a green outer preflight already proves the clean tree passes.
     """
-    if os.environ.get(NEST_ENV):
+    if (ROOT / NEST_MARKER).exists():
         print("  --  preflight enforcement: skipped (already inside a preflight run)")
+        return
+    # 목록이 «있는지» 는 밖에서 세지만, 그 사이에 비워지는 길이 있다
+    # (`PREFLIGHT_ENFORCEMENT.clear()` 한 줄이면 정적 검사는 통과한다 — 리뷰 9).
+    # 여기서 다시 센다. 실행 시점의 값이 진실이다.
+    if len(PREFLIGHT_ENFORCEMENT) < 2:
+        failures.append(f"preflight enforcement: only {len(PREFLIGHT_ENFORCEMENT)} "
+                        f"case(s) at run time — the section runs and proves nothing")
         return
     with tempfile.TemporaryDirectory() as tmp:
         for i, (label, stage, relpath, anchor, replacement) in enumerate(PREFLIGHT_ENFORCEMENT):
@@ -1019,9 +1088,9 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
                 failures.append(f"preflight enforcement: breaking {label} left the file "
                                 f"unparseable — {syn.stderr.strip().splitlines()[-1][:100]}")
                 continue
+            (broken / NEST_MARKER).write_text("", encoding="utf-8")
             res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=broken,
-                                 capture_output=True, text=True,
-                                 env=dict(os.environ, **{NEST_ENV: "1"}))
+                                 capture_output=True, text=True)
             if res.returncode == 0:
                 failures.append(
                     f"preflight enforcement: {label} was broken and "
@@ -1171,12 +1240,16 @@ def main() -> int:
                "preflight-exit-before": "preflight-stages",
                "preflight-function-keyword": "preflight-stages",
                "enforcement-emptied": "preflight-stages",
-               "ci-nest-job-env": "ci-runs-preflight",
                "dead-api-duplicate-line": "dead-api",
                "preflight-runner-duplicate": "preflight-stages",
                "preflight-runner-shadow": "preflight-stages",
                "ci-integrity-step": "ci-runs-preflight",
-               "ci-nest-switch": "ci-runs-preflight",
+               "nest-marker-tracked": "preflight-stages",
+               "preflight-fail-reset": "preflight-stages",
+               "preflight-trap": "preflight-stages",
+               "ci-preflight-swallowed": "ci-runs-preflight",
+               "preflight-runner-continuation": "preflight-stages",
+               "preflight-shadow-subshell": "preflight-stages",
                "dead-api-stale-allowlist": "dead-api",
                "dead-api-build-dir": "dead-api",
                "ci-preflight-echo-only": "ci-runs-preflight",

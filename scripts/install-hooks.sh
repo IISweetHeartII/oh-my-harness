@@ -8,11 +8,10 @@ cd "$(dirname "$0")/.."
 hooks=$(git rev-parse --git-path hooks)
 mkdir -p "$hooks"
 # 이미 있는 훅을 말없이 덮지 않는다 — 남의 설정일 수 있다.
-if [ -e "$hooks/pre-push" ] && ! grep -q "scripts/preflight.sh" "$hooks/pre-push"; then
-  cp "$hooks/pre-push" "$hooks/pre-push.backup-$(date +%Y%m%d%H%M%S)"
-  echo "backed up the existing pre-push hook"
-fi
-cat > "$hooks/pre-push" <<'SH'
+# 「preflight 를 언급하나」로 판단했더니, preflight 와 «다른 검사도 함께» 돌리는 훅이
+# 백업 없이 지워졌다(리뷰 9). 우리가 쓸 내용과 바이트가 다르면 무조건 백업한다.
+new_hook=$(mktemp)
+cat > "$new_hook" <<'SH'
 #!/usr/bin/env sh
 # 무결성 확인이 먼저다 — preflight 자신이 `exit 0` 으로 바뀌었으면 그 뒤 결과는
 # 전부 거짓말이다. 스크립트는 자기 종료코드를 검사할 수 없으니 밖에서 묻는다.
@@ -20,5 +19,11 @@ root=$(git rev-parse --show-toplevel)
 python3 "$root/scripts/validate_repository.py" --only preflight-stages || exit 1
 exec bash "$root/scripts/preflight.sh"
 SH
+if [ -e "$hooks/pre-push" ] && ! cmp -s "$hooks/pre-push" "$new_hook"; then
+  backup="$hooks/pre-push.backup-$(date +%Y%m%d%H%M%S)"
+  cp "$hooks/pre-push" "$backup"
+  echo "backed up the existing pre-push hook to $backup"
+fi
+mv "$new_hook" "$hooks/pre-push"
 chmod +x "$hooks/pre-push"
 echo "installed: $hooks/pre-push — pushes now run scripts/preflight.sh first"
