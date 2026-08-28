@@ -1030,6 +1030,30 @@ def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
         failures.append(f"preflight enforcement: only {len(PREFLIGHT_ENFORCEMENT)} "
                         f"case(s) at run time — the section runs and proves nothing")
         return
+
+    # 「선언된 단계가 실제로 돌았나」. 정적으로 STAGES 를 읽는 게이트와, 실행이
+    # 실제로 낸 출력을 맞대 본다 — `STAGES.pop()` 처럼 선언 뒤에 목록을 바꾸면
+    # 둘이 갈라지고, 그 갈라짐이 여기서만 보인다.
+    with tempfile.TemporaryDirectory() as tmp:
+        clean = Path(tmp) / "declared-vs-run"
+        copy_tree(clean)
+        (clean / NEST_MARKER).write_text("", encoding="utf-8")
+        res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=clean,
+                             capture_output=True, text=True)
+        declared = [m.group(1) for m in re.finditer(
+            r'^\s{4}\("([^"]+)",', (clean / "scripts" / "preflight_runner.py")
+            .read_text(encoding="utf-8"), re.M)]
+        ran = re.findall(r"^== (.+)$", res.stdout, re.M)
+        if res.returncode != 0:
+            failures.append("declared stages actually ran: the clean tree does not pass "
+                            f"preflight — {res.stdout.strip().splitlines()[-1][:120]}")
+        elif ran != declared:
+            failures.append(f"declared stages actually ran: preflight_runner.py declares "
+                            f"{declared} but the run produced {ran} — a stage is declared "
+                            f"and not executed, or executed and not declared")
+        else:
+            print(f"  ok  declared stages actually ran: {len(ran)} declared, "
+                  f"{len(ran)} executed, same order")
     with tempfile.TemporaryDirectory() as tmp:
         for i, (label, stage, relpath, anchor, replacement) in enumerate(PREFLIGHT_ENFORCEMENT):
             broken = Path(tmp) / f"enforce-{i}"
