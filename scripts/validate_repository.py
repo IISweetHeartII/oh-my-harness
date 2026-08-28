@@ -20,7 +20,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -283,8 +285,13 @@ def first_party_text_files() -> list[Path]:
             path = ROOT / name
             if not path.is_file():
                 continue
-            if any(part in EXCLUDED_PARTS or part in {"vendor", "dist", "build"}
-                   for part in path.parts):
+            parts = path.relative_to(ROOT).parts
+            if any(part in EXCLUDED_PARTS for part in parts):
+                continue
+            # vendor/dist/build 는 «최상위» 일 때만 남의 것이다. 경로 조각 어디에나
+            # 적용했더니 `docs/build/` 가 통째로 스캔 밖이었다 — 우리가 쓰는 문서다.
+            # 이름이 아니라 위치가 경계다.
+            if parts[0] in {"vendor", "dist", "build"}:
                 continue
             out.append(path)
     return sorted(set(out))
@@ -601,7 +608,20 @@ REQUIRED_PREFLIGHT_CALLS = [
     ("scripts/validate_repository.py", None),              # 저장소 게이트
     ("tests/guardrail/run_guardrail.py", None),            # 가드레일 스위트
     ("scripts/harness_lint.py", None),                     # 참조 하네스
+    ("scripts/validate_repository.py", "--self-test"),     # 판정 함수 자신
 ]
+
+# preflight 의 «실행기» 는 글자 그대로 이 모양이어야 한다.
+#
+# 왜 (2026-08-28 실측): 호출 줄도 STAGES_EXPECTED 도 그대로 둔 채 run() 만
+# 「--self-test 이면 그냥 return 0」 으로 고쳤더니, 그 단계가 한 번도 안 돌았는데
+# preflight-stages 도 preflight 도 초록이었다. 게이트가 «호출 줄» 을 보고 있었지
+# «실행» 을 보고 있지 않았다. 스크립트는 자기 자신에 대한 편집을 막을 수 없으니
+# 판정은 바깥 파일이 한다.
+PREFLIGHT_RUNNER_BODIES = {
+    "run": r"""run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }""",
+    "stage": r"""stage() { printf '\n== %s\n' "$1"; stages_run=$((stages_run + 1)); }""",
+}
 
 
 def _preflight_commands() -> list[str]:
@@ -649,15 +669,82 @@ def check_preflight_stages(errors: list[str]) -> None:
         if declared != actual:
             errors.append(f"scripts/preflight.sh declares STAGES_EXPECTED={declared} "
                           f"but has {actual} stages")
+    # 그리고 실행기 자체 — 호출 줄과 개수를 그대로 둔 채 run() 만 고치면
+    # 「센 단계」와 「실행한 단계」가 갈라진다.
+    for name, want in PREFLIGHT_RUNNER_BODIES.items():
+        got = next((l.strip() for l in text.splitlines()
+                    if l.strip().startswith(f"{name}() ")), None)
+        if got is None:
+            errors.append(f"scripts/preflight.sh no longer defines {name}()")
+        elif got != want:
+            errors.append(
+                f"scripts/preflight.sh's {name}() is not the canonical runner — "
+                f"a stage can be counted without being executed. "
+                f"want: {want}  ||  got: {got}")
 
 
 # 셸에서 스크립트가 «실행되는» 형태. `echo X` 는 X 를 출력할 뿐 실행하지 않는다.
+# basename 으로 비교한다 — `/bin/bash` 도 bash 다.
 SHELL_RUNNERS = {
     "bash", "sh", "zsh", "source", ".", "exec", "command", "time", "sudo", "env",
     # 인터프리터도 실행자다. 이걸 빼놨더니 `python3 scripts/x.py` 를 «실행 아님» 으로
     # 읽어, 멀쩡한 preflight 를 「아무것도 안 부른다」고 보고했다 — 거짓양성 넷.
     "python", "python3", "node", "deno", "bun", "ruby", "perl", "uv", "uvx", "npx",
 }
+
+# 실행자에 붙으면 «실행이 아니게» 되는 단문자 옵션. (실행자, 글자) 쌍이다 —
+# `bash -n x.sh` 는 문법만 보고, `command -v x.sh` 는 경로만 찾는다.
+# 긴 옵션(`--norc`)은 글자 포함으로 판정하면 안 되므로 아예 보지 않는다.
+NON_EXECUTING_FLAGS = {("bash", "n"), ("sh", "n"), ("zsh", "n"),
+                       ("command", "v"), ("command", "V")}
+
+# 값을 하나 더 먹는 옵션. 이걸 모르면 `sudo -u root bash x.sh` 의 `root` 가
+# 스크립트 자리로 보여, 실제로 실행하는 명령을 «실행 아님» 으로 읽는다.
+FLAGS_WITH_VALUE = {"-u", "-g", "-C", "-p", "-U", "-r", "-t", "--user", "--group"}
+ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+
+
+def _norm_path(token: str) -> str:
+    token = token.strip("'\"")
+    while token.startswith("./"):
+        token = token[2:]
+    return token
+
+
+def _same_script(token: str, script: str) -> bool:
+    """The argv slot names this script — by relative path or with a prefix."""
+    want, got = _norm_path(script), _norm_path(token)
+    return got == want or got.endswith("/" + want)
+
+
+def _statement_invokes(stmt: str, script: str) -> bool:
+    """Does this one command put `script` in the argv slot that gets executed?"""
+    try:
+        toks = shlex.split(stmt, comments=True)
+    except ValueError:
+        toks = stmt.split()          # unbalanced quotes: fall back to whitespace
+    i = 0
+    while i < len(toks):
+        tok = toks[i]
+        if ASSIGNMENT_RE.fullmatch(tok):
+            i += 1                    # leading VAR=value
+            continue
+        runner = os.path.basename(_norm_path(tok))
+        if runner not in SHELL_RUNNERS:
+            break
+        i += 1
+        while i < len(toks) and toks[i].startswith("-") and toks[i] != "--":
+            opt = toks[i]
+            if not opt.startswith("--"):
+                letters = set(opt[1:])
+                if any(runner == r and f in letters for r, f in NON_EXECUTING_FLAGS):
+                    return False
+            i += 1
+            if opt in FLAGS_WITH_VALUE and i < len(toks) and not toks[i].startswith("-"):
+                i += 1
+        if i < len(toks) and toks[i] == "--":
+            i += 1
+    return i < len(toks) and _same_script(toks[i], script)
 
 
 def _invokes(command: str, script: str) -> bool:
@@ -666,16 +753,25 @@ def _invokes(command: str, script: str) -> bool:
     `run: echo scripts/preflight.sh` mentions it and runs nothing. Deciding
     that with `script in command` is the substring mistake yet again — the
     question is a position in the command, not a presence in the string.
+
+    Being wrong in the other direction is just as bad and happened too: the
+    first positional version rejected `/bin/bash scripts/preflight.sh` and
+    `sudo -u root bash scripts/preflight.sh`, so a working CI read as broken.
+    `--self-test` pins both directions.
     """
-    for stmt in re.split(r"[\n;]|&&|\|\||\|", command):
-        toks = stmt.split()
-        # skip leading VAR=value assignments and runner words
-        i = 0
-        while i < len(toks) and (re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", toks[i])
-                                 or toks[i] in SHELL_RUNNERS or toks[i].startswith("-")):
-            i += 1
-        if i < len(toks) and toks[i].lstrip("./") == script.lstrip("./"):
+    parts = re.split(r"(\n|;|&&|\|\||\|)", command)
+    dead = False                      # inside a branch that cannot run
+    for idx in range(0, len(parts), 2):
+        if not dead and _statement_invokes(parts[idx], script):
             return True
+        sep = parts[idx + 1] if idx + 1 < len(parts) else None
+        prev = parts[idx].strip()
+        if sep == "&&":
+            dead = dead or prev in {"false", "/bin/false"}
+        elif sep == "||":
+            dead = prev in {"true", ":", "/bin/true"}
+        else:
+            dead = False
     return False
 
 
@@ -749,8 +845,9 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
                       "CI and the local gate can now disagree "
                       f"(steps found: {'; '.join(c.splitlines()[0][:60] for c in commands)})")
     for script in ("scripts/validate_repository.py", "tests/guardrail/run_guardrail.py"):
-        # naming a gate directly is how the lists drift apart again
-        if any(script in c for c in commands):
+        # naming a gate directly is how the lists drift apart again — but
+        # «naming» is not «running», so ask the same positional question.
+        if any(_invokes(c, script) for c in commands):
             errors.append(f"a run: step calls {script} directly instead of going "
                           f"through scripts/preflight.sh")
 
@@ -844,6 +941,51 @@ CHECKS = {
 }
 
 
+# (셸 조각, 스크립트, 이것이 «실행» 인가) — 양방향 둘 다 적는다.
+# 한쪽만 재면 규칙이 틀린 채로 완벽하게 발화한다.
+INVOKES_SELF_TEST = [
+    ("bash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("/bin/bash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("./scripts/preflight.sh", "scripts/preflight.sh", True),
+    ('bash "scripts/preflight.sh"', "scripts/preflight.sh", True),
+    ("bash --norc scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("sudo -u root bash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("env -i HOME=/tmp bash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("set -e\nbash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("python3 scripts/validate_repository.py --self-test",
+     "scripts/validate_repository.py", True),
+    ("echo scripts/preflight.sh", "scripts/preflight.sh", False),
+    ("cat scripts/preflight.sh", "scripts/preflight.sh", False),
+    ("ls -l scripts/preflight.sh", "scripts/preflight.sh", False),
+    ("bash -n scripts/preflight.sh", "scripts/preflight.sh", False),
+    ("command -v scripts/preflight.sh", "scripts/preflight.sh", False),
+    ("false && bash scripts/preflight.sh || true", "scripts/preflight.sh", False),
+    ("true || bash scripts/preflight.sh", "scripts/preflight.sh", False),
+    ("echo 'nightly runs scripts/preflight.sh'", "scripts/preflight.sh", False),
+]
+
+
+def self_test() -> int:
+    """Test this file's judging function, in both directions.
+
+    `_invokes` decides whether CI really runs the gate, and it has been wrong
+    each way: it passed `echo scripts/preflight.sh` (named, never run) and it
+    rejected `/bin/bash scripts/preflight.sh` (run, not recognised). One
+    direction hides a dead CI; the other trains you to ignore the gate. Only
+    the pair is evidence.
+    """
+    fail = 0
+    for snippet, script, want in INVOKES_SELF_TEST:
+        got = _invokes(snippet, script)
+        if got == want:
+            print(f"  ok  _invokes({snippet!r}) = {got}")
+        else:
+            print(f"FAIL _invokes({snippet!r}) = {got}, want {want}", file=sys.stderr)
+            fail = 1
+    print("self-test passed" if not fail else "self-test FAILED")
+    return fail
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -853,7 +995,12 @@ def main() -> int:
         help="run only the named check (repeatable); default runs all",
     )
     parser.add_argument("--list", action="store_true", help="list check names and exit")
+    parser.add_argument("--self-test", action="store_true",
+                        help="test this file's own judging functions and exit")
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     if args.list:
         for name in sorted(CHECKS):

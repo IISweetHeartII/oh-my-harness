@@ -9,6 +9,59 @@
 **2.1.0 이하 항목은 업스트림의 기록**이며, 2.2.0 부터가 이 저장소의 변경입니다.
 채택·기각한 업스트림 PR 의 전수 판정은 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) 에 있습니다.
 
+## [2.9.1] - 2026-08-28
+
+여섯 번째 리뷰. 앞선 다섯 번이 「검사를 지우면 아무도 모른다」를 고쳤다면, 이번엔
+**「검사를 «부르는 줄» 은 그대로 두고 안 돌게 만들 수 있다」** 였다.
+
+### 실행기를 고정한다 — 호출 줄이 아니라 실행
+
+`run()` 을 「`--self-test` 면 그냥 return 0」 으로 고치면 호출 줄도 `STAGES_EXPECTED`
+도 그대로인데 그 단계가 한 번도 안 돈다. 실측으로 `preflight-stages` 와 `preflight`
+둘 다 초록이었다. 이제 게이트가 **실행기 본문을 글자 그대로 고정**한다.
+스크립트는 자기 편집을 막지 못하므로 판정은 바깥 파일이 한다 — 남는 한계는
+`docs/OPEN-FINDINGS.md` **§D-7**.
+
+### `_invokes` 는 양방향으로 틀려 있었다
+
+| 통과하면 안 되는데 통과 | 거부하면 안 되는데 거부 |
+|---|---|
+| `bash -n scripts/preflight.sh` (문법검사) | `/bin/bash scripts/preflight.sh` |
+| `command -v scripts/preflight.sh` (경로조회) | `sudo -u root bash scripts/preflight.sh` |
+| `false && bash scripts/preflight.sh \|\| true` (죽은 분기) | 따옴표 친 경로 |
+
+argv 위치를 파싱하고, 실행자는 basename 으로 보고, 죽은 분기를 표시한다.
+그리고 **`python3 scripts/validate_repository.py --self-test` 가 양방향 17건을 고정**한다
+— 이 스크립트도 이제 자기 판정 함수를 시험한다(preflight 두 번째 단계).
+
+### 「지워도 초록」인 규칙 넷에 전용 케이스
+
+`_invokes` 를 부분문자열로 되돌려도, stale allowlist 검사를 통째로 지워도 가드레일이
+초록이었다. 새 케이스 4종을 넣고 **각각 구현을 되돌려 `did NOT fail` 로 죽는지 확인**했다.
+
+- `preflight-run-tampered` — 단계를 세면서 실행은 건너뛰는 실행기
+- `ci-preflight-echo-only` — `run: echo scripts/preflight.sh`
+- `dead-api-stale-allowlist` — 존재하지 않는 줄을 면제하는 항목
+- `dead-api-build-dir` — 우리가 쓰는 `docs/build/` 안의 제거된 API
+
+### `dead-api` 범위 — 이름이 아니라 위치
+
+`vendor`/`dist`/`build` 를 «경로 조각 어디에나» 적용해 `docs/build/` 가 통째로 스캔
+밖이었다. **최상위일 때만** 제외한다.
+
+### 검사기 A — 자기시험이 조건부였다
+
+합성 스텁 시험이 `if codex 있음` 블록 안에 있어서, 파서를 깨뜨리면 「codex 없음」을
+찍고 **아무것도 안 잰 채 exit 0** 이었다. 무조건 실행으로 옮겨 자기시험이 4건 → **19건**.
+산문 케이스도 구간 «밖» 으로 옮겼다 — 안에 있을 때는 구간 분리가 아니라 「모르는 줄」
+규칙으로 통과하고 있었다(틀린 이유로 통과, 오늘 일곱 번째).
+
+### 이 판의 증명
+
+저장소 14규칙(**24 케이스**) + 린트 9규칙(**19 케이스**) + 유효변형 8.
+새 케이스 4종은 **구현 되돌리기로 load-bearing 임을 확인**했다.
+판정기 자기시험: 가드레일 5건 · **검사기(validate_repository) 17건** · A 19건 · B 17건.
+
 ## [2.9.0] - 2026-08-28
 
 다섯 번째 리뷰가 개별 버그가 아니라 **부류**에 이름을 붙였다: **「검사를 지우면 아무도
@@ -49,7 +102,8 @@
 `### Available skills` 구간 «안에서만» 항목을 읽고, 그 구간의 **모르는 줄은 조용히
 무시하지 않고 «형식 변경»(exit 2)** 으로 처리한다. 중복 등록도 통과시키지 않는다.
 ⚠️ 자문이 확인해 준 한계: **정확한 슬롯의 동일한 바이트는 이 계층에서 구별할 수 없다.**
-항목별 provenance 가 없기 때문이다 — `docs/OPEN-FINDINGS.md` 에 적었다.
+항목별 provenance 가 없기 때문이다 — `docs/OPEN-FINDINGS.md` **§A-13** 에 적었다.
+(2.9.0 은 「적었다」고만 썼고 실제로는 없었다. 2.9.1 에서 실제로 적었다.)
 
 ### 🔴 그 과정에서 내가 낸 결함 셋
 

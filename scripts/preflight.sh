@@ -20,7 +20,7 @@ fail=0
 # 왜 필요한가 (2026-08-27 실측): self-test 호출 줄을 지우고 판정기까지 깨뜨렸는데
 # preflight 가 exit 0 을 냈다. 게이트를 세워 놓고 «그 게이트를 부르는 줄» 은
 # 아무도 안 지키고 있었다. 검사를 지우면 알아야 한다.
-STAGES_EXPECTED=7
+STAGES_EXPECTED=8
 stages_run=0
 run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }
 stage() { printf '\n== %s\n' "$1"; stages_run=$((stages_run + 1)); }
@@ -29,6 +29,7 @@ stage() { printf '\n== %s\n' "$1"; stages_run=$((stages_run + 1)); }
 # `verdict()` 의 exit-2 보호를 지우면 자기시험만 실패하고 preflight 는 통과했다 —
 # 자기시험이 강제 경로에 연결돼 있지 않았다.
 run "guardrail self-test" python3 tests/guardrail/run_guardrail.py --self-test
+run "validator self-test" python3 scripts/validate_repository.py --self-test
 run "repository gates"  python3 scripts/validate_repository.py
 run "guardrail suite"   python3 tests/guardrail/run_guardrail.py
 run "reference harness" python3 scripts/harness_lint.py tests/fixtures/clean-harness

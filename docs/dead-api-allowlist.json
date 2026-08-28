@@ -704,6 +704,12 @@
       "token": "team_name",
       "sha": "a9161ec405966a6a",
       "reason": "가드레일이 dead-api 규칙을 «일부러 깨뜨려» 발화를 증명하는 케이스. 이 문자열이 없으면 그 증명이 사라진다."
+    },
+    {
+      "path": "tests/guardrail/run_guardrail.py",
+      "token": "TeamCreate",
+      "sha": "be10bfb29cca621d",
+      "reason": "The stale-allowlist case has to forge an entry, and an entry names its token by definition. Removing the name would make the case unable to exercise the rule it exists for."
     }
   ]
 }

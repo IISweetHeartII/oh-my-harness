@@ -2,7 +2,7 @@
   "_notice": "Modified from revfactory/harness (Apache-2.0, Copyright 2025 robin). Rebranded to oh-my-harness; see NOTICE and docs/ATTRIBUTION.md.",
   "name": "oh-my-harness",
   "description": "The team-architecture factory for Claude Code — a meta-skill that turns a domain description into an agent team and the skills they use. Three native execution modes (Workflow orchestration, persistent named-agent collaboration, sub-agent delegation), six team-architecture patterns, and workflow-native quality patterns (adversarial verification, judge panels, loop-until-dry). A maintained derivative of revfactory/harness, shipping its unmerged v2 rebuild plus reviewed community pull requests. Claude Code용 팀 아키텍처 팩토리: 도메인 한 문장을 에이전트 팀과 스킬 세트로 변환하는 메타 스킬. 面向 Claude Code 的团队架构工厂：把一句领域描述转化为一支 agent team 与一套 skill 的元 skill。",
-  "version": "2.9.0",
+  "version": "2.9.1",
   "author": {
     "name": "IISweetHeartII",
     "url": "https://github.com/IISweetHeartII"

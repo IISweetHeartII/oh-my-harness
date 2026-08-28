@@ -251,6 +251,71 @@ def break_preflight_stage_swapped(repo: Path) -> str:
     return "a preflight stage replaced by a no-op that keeps the count right"
 
 
+def break_preflight_runner(repo: Path) -> str:
+    """Keep the call line and the stage count; make the runner skip the command.
+
+    The stage list still names the self-test and STAGES_EXPECTED still agrees
+    with it, yet the judge is never run. Watching the call line is not watching
+    the run — the gate has to pin the runner itself.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    old = r"""run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }"""
+    if old not in text:
+        raise AssertionError("preflight.sh's run() is not the shape this case rewrites")
+    new = (r"""run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); """
+           r"""case "$*" in *--self-test*) return 0;; esac; "$@" || fail=1; }""")
+    p.write_text(text.replace(old, new, 1), encoding="utf-8")
+    return "a runner that counts a stage it never executes"
+
+
+def break_ci_preflight_echo(repo: Path) -> str:
+    """CI names preflight inside a real run: step, and only prints it.
+
+    Reverting `_invokes` to `script in command` leaves every other CI case
+    green — those are caught by comment stripping, not by argv position. This
+    is the case that goes red when the substring version comes back.
+    """
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    if "        run: bash scripts/preflight.sh" not in text:
+        raise AssertionError("expected a run: step invoking preflight.sh")
+    wf.write_text(text.replace("        run: bash scripts/preflight.sh",
+                               "        run: echo scripts/preflight.sh", 1), encoding="utf-8")
+    return "CI echoing the gate's name instead of running it"
+
+
+def break_dead_api_stale_allowlist(repo: Path) -> str:
+    """An exemption for a line that does not exist.
+
+    Deleting the stale-entry loop entirely left the suite green: every other
+    dead-api case is about a *missing* exemption. A stale one is the dangerous
+    direction — it pre-approves whatever text lands on that key next.
+    """
+    p = repo / "docs" / "dead-api-allowlist.json"
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["allow"].append({
+        "path": "docs/no-such-file.md",
+        "token": "TeamCreate",
+        "sha": "0123456789abcdef",
+        "reason": "a line that was deleted long ago",
+    })
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return "an allowlist entry whose line no longer exists"
+
+
+def break_dead_api_build_dir(repo: Path) -> str:
+    """A removed API under docs/build/ — a directory this repository owns.
+
+    `build` was matched against any path part, so anything under docs/build/
+    fell out of the scan. Ownership is the boundary; the word is not.
+    """
+    d = repo / "docs" / "build"
+    d.mkdir(parents=True, exist_ok=True)
+    shutil.copy(CASES_DIR / "dead-api.md.fixture", d / "guardrail-dead-api.md")
+    return "a removed API in docs/build/, which this repository writes"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -286,6 +351,10 @@ CASES = {
     "preflight-stage-swapped": break_preflight_stage_swapped,
     "ci-runs-preflight": break_ci_runs_preflight,
     "ci-preflight-comment-only": break_ci_preflight_comment_only,
+    "ci-preflight-echo-only": break_ci_preflight_echo,
+    "preflight-run-tampered": break_preflight_runner,
+    "dead-api-stale-allowlist": break_dead_api_stale_allowlist,
+    "dead-api-build-dir": break_dead_api_build_dir,
 }
 
 
@@ -844,6 +913,10 @@ def main() -> int:
                "readme-rule-docs": "lint-rule-docs",
                "readme-rule-name": "lint-rule-docs",
                "preflight-stage-swapped": "preflight-stages",
+               "preflight-run-tampered": "preflight-stages",
+               "dead-api-stale-allowlist": "dead-api",
+               "dead-api-build-dir": "dead-api",
+               "ci-preflight-echo-only": "ci-runs-preflight",
                "ci-preflight-shell-comment": "ci-runs-preflight"}
     uncovered = sorted(set(known) - set(CASES) - set(ALIASES.values()))
     if uncovered:
