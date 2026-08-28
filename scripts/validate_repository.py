@@ -618,6 +618,15 @@ REQUIRED_PREFLIGHT_CALLS = [
 # preflight-stages 도 preflight 도 초록이었다. 게이트가 «호출 줄» 을 보고 있었지
 # «실행» 을 보고 있지 않았다. 스크립트는 자기 자신에 대한 편집을 막을 수 없으니
 # 판정은 바깥 파일이 한다.
+# 가드레일 스위트가 «반드시 부르는» 절. 한 줄을 지우면 그 절 전체가 조용히 사라진다 —
+# 스위트 안에서는 아무도 모르고, 요약 문장만 짧아진다. 그래서 밖에서 센다.
+REQUIRED_GUARDRAIL_SECTIONS = ("guardrail_harness_lint", "guardrail_valid_variants",
+                               "guardrail_preflight_enforces")
+
+# 가드레일이 preflight 를 재귀 없이 돌리기 위한 표시. CI 의 실행 단계에 이 이름이
+# 나오면 `ci-runs-preflight` 가 막는다 — 강제 확인을 끄는 스위치이기 때문이다.
+GUARDRAIL_NEST_ENV = "OH_MY_HARNESS_GUARDRAIL_NEST"
+
 PREFLIGHT_RUNNER_BODIES = {
     "run": r"""run() { printf '\n== %s\n' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }""",
     "stage": r"""stage() { printf '\n== %s\n' "$1"; stages_run=$((stages_run + 1)); }""",
@@ -671,16 +680,43 @@ def check_preflight_stages(errors: list[str]) -> None:
                           f"but has {actual} stages")
     # 그리고 실행기 자체 — 호출 줄과 개수를 그대로 둔 채 run() 만 고치면
     # 「센 단계」와 「실행한 단계」가 갈라진다.
+    #
+    # 이 고정은 «본 적 있는» 변조만 막는다. 정적 고정만 두었더니 한 자리에서 셋이
+    # 더 뚫렸다 — 중복 정의 · 실행자 셰도잉 · exit 0. 진짜 판정은 가드레일이
+    # preflight 를 «실제로 돌려서» 한다. 여기 넷은 그 위의 얇은 그물이다.
     for name, want in PREFLIGHT_RUNNER_BODIES.items():
-        got = next((l.strip() for l in text.splitlines()
-                    if l.strip().startswith(f"{name}() ")), None)
-        if got is None:
+        defs = [l.strip() for l in text.splitlines() if l.strip().startswith(f"{name}() ")]
+        if not defs:
             errors.append(f"scripts/preflight.sh no longer defines {name}()")
-        elif got != want:
+        elif len(defs) > 1:
+            # 나중 정의가 앞 정의를 덮는다. 정경 정의를 그대로 두고 아래에 하나 더
+            # 놓으면 「첫 줄만 보는」 고정은 그대로 통과했다(실측).
+            errors.append(f"scripts/preflight.sh defines {name}() {len(defs)} times — "
+                          f"the last definition wins and the canonical one is decoration")
+        elif defs[0] != want:
             errors.append(
                 f"scripts/preflight.sh's {name}() is not the canonical runner — "
                 f"a stage can be counted without being executed. "
-                f"want: {want}  ||  got: {got}")
+                f"want: {want}  ||  got: {defs[0]}")
+    # 실행자 이름을 셸 함수로 가리면 그 이름을 쓰는 단계가 조용히 no-op 이 된다.
+    for m in re.finditer(r"^[ \t]*([A-Za-z_][A-Za-z0-9_.-]*)[ \t]*\(\)[ \t]*\{", text, re.M):
+        if m.group(1) in SHELL_RUNNERS:
+            errors.append(f"scripts/preflight.sh defines a shell function named "
+                          f"{m.group(1)}() — that shadows the interpreter, and every "
+                          f"stage invoking it silently becomes a no-op")
+    # 가드레일 스위트의 절이 다 불리는가. 호출 줄 하나를 지우면 그 절이 통째로 안 돈다.
+    suite = (ROOT / "tests" / "guardrail" / "run_guardrail.py").read_text(encoding="utf-8")
+    called = set(re.findall(r"^\s*(\w+)\(failures, args\.verbose\)", suite, re.M))
+    for section in REQUIRED_GUARDRAIL_SECTIONS:
+        if section not in called:
+            errors.append(f"tests/guardrail/run_guardrail.py never calls {section}() — "
+                          f"that whole section of the suite is silently skipped")
+    # 종료 코드. `exit 0` 이면 모든 게이트가 빨개져도 이 스크립트는 성공을 보고한다.
+    # 스크립트는 자기 종료코드를 검사할 수 없으므로, 이 줄을 «밖에서» 확인하는
+    # 무결성 스텝(CI·pre-push 훅 첫 줄)이 짝을 이룬다.
+    if not re.search(r"^exit \$fail$", text, re.M):
+        errors.append("scripts/preflight.sh does not end with `exit $fail` — "
+                      "a stage can fail while the script reports success")
 
 
 # 셸에서 스크립트가 «실행되는» 형태. `echo X` 는 X 를 출력할 뿐 실행하지 않는다.
@@ -700,8 +736,62 @@ NON_EXECUTING_FLAGS = {("bash", "n"), ("sh", "n"), ("zsh", "n"),
 
 # 값을 하나 더 먹는 옵션. 이걸 모르면 `sudo -u root bash x.sh` 의 `root` 가
 # 스크립트 자리로 보여, 실제로 실행하는 명령을 «실행 아님» 으로 읽는다.
-FLAGS_WITH_VALUE = {"-u", "-g", "-C", "-p", "-U", "-r", "-t", "--user", "--group"}
+# `-o pipefail` 의 `pipefail`, `-c '…'` 의 명령 문자열이 스크립트 자리로 보이면
+# 멀쩡한 CI 를 거부한다. `bash -eu -o pipefail scripts/preflight.sh` 가 그 예다.
+FLAGS_WITH_VALUE = {"-u", "-g", "-C", "-p", "-U", "-r", "-t", "-o", "-c",
+                    "--user", "--group"}
 ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+
+# 조건문·반복문·함수 몸통·히어독 안의 줄은 «무조건 실행» 이 아니다.
+BLOCK_OPEN_RE = re.compile(r"^(if|while|until|case|for)\b")
+BLOCK_CLOSE_RE = re.compile(r"^(fi|done|esac|\})")
+FUNC_OPEN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*\(\)\s*\{")
+HEREDOC_RE = re.compile(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
+
+
+def _unconditional_lines(command: str) -> str:
+    """The lines a shell snippet runs unconditionally, plus called function bodies.
+
+    `if false; then bash scripts/preflight.sh; fi` and a heredoc containing the
+    same text both name the script and run nothing. A function body counts only
+    when something calls it — dropping every function body would reject the
+    legitimate CI that wraps the call in one.
+    """
+    top: list[str] = []
+    bodies: dict[str, list[str]] = {}
+    depth, heredoc, current = 0, None, None
+    for line in command.splitlines():
+        stripped = line.strip()
+        if heredoc is not None:
+            if stripped == heredoc:
+                heredoc = None
+            continue
+        if BLOCK_CLOSE_RE.match(stripped):
+            depth = max(0, depth - 1)
+            if depth == 0:
+                current = None
+            continue
+        if depth == 0:
+            top.append(line)
+        elif current is not None:
+            bodies[current].append(line)
+        fn = FUNC_OPEN_RE.match(stripped)
+        if fn and depth == 0:
+            current = fn.group(1)
+            bodies.setdefault(current, [])
+        if BLOCK_OPEN_RE.match(stripped) or fn:
+            depth += 1
+        m = HEREDOC_RE.search(line)
+        if m:
+            heredoc = m.group(1)
+    called = set()
+    for stmt in re.split(r"[\n;]|&&|\|\||\|", "\n".join(top)):
+        toks = stmt.split()
+        if toks and toks[0] in bodies:
+            called.add(toks[0])
+    for name in called:
+        top.extend(bodies[name])
+    return "\n".join(top)
 
 
 def _norm_path(token: str) -> str:
@@ -759,7 +849,7 @@ def _invokes(command: str, script: str) -> bool:
     `sudo -u root bash scripts/preflight.sh`, so a working CI read as broken.
     `--self-test` pins both directions.
     """
-    parts = re.split(r"(\n|;|&&|\|\||\|)", command)
+    parts = re.split(r"(\n|;|&&|\|\||\|)", _unconditional_lines(command))
     dead = False                      # inside a branch that cannot run
     for idx in range(0, len(parts), 2):
         if not dead and _statement_invokes(parts[idx], script):
@@ -844,10 +934,28 @@ def check_ci_runs_preflight(errors: list[str]) -> None:
         errors.append("no run: step in validation.yml executes scripts/preflight.sh — "
                       "CI and the local gate can now disagree "
                       f"(steps found: {'; '.join(c.splitlines()[0][:60] for c in commands)})")
+    # 여기서는 «있나» 가 진짜 질문이다 — 실행되는 단계 어디서든 이 이름이 나오면
+    # 강제 확인이 꺼진다. 위치가 아니라 존재 자체가 위험이다.
+    if any(GUARDRAIL_NEST_ENV in c for c in commands):
+        errors.append(f"a run: step mentions {GUARDRAIL_NEST_ENV} — that variable "
+                      f"switches off the check that preflight actually enforces its "
+                      f"gates, and CI must not be where it gets set")
+    # preflight 는 자기 종료코드를 검사할 수 없다 — 끝을 `exit 0` 으로 바꾸면 모든
+    # 게이트가 빨개져도 CI 는 초록이다(실측). 그래서 CI 는 그 하나만 밖에서 다시
+    # 묻는 스텝을 가져야 한다. 게이트 목록의 재나열이 아니라 무결성 확인이다.
+    integrity = [c for c in commands
+                 if _invokes(c, "scripts/validate_repository.py")
+                 and "--only" in c.split() and "preflight-stages" in c.split()]
+    if not integrity:
+        errors.append("validation.yml has no step running "
+                      "`python3 scripts/validate_repository.py --only preflight-stages` — "
+                      "without it a preflight.sh ending in `exit 0` reports success "
+                      "while every gate is red")
     for script in ("scripts/validate_repository.py", "tests/guardrail/run_guardrail.py"):
         # naming a gate directly is how the lists drift apart again — but
         # «naming» is not «running», so ask the same positional question.
-        if any(_invokes(c, script) for c in commands):
+        others = [c for c in commands if _invokes(c, script) and c not in integrity]
+        if others:
             errors.append(f"a run: step calls {script} directly instead of going "
                           f"through scripts/preflight.sh")
 
@@ -962,6 +1070,20 @@ INVOKES_SELF_TEST = [
     ("false && bash scripts/preflight.sh || true", "scripts/preflight.sh", False),
     ("true || bash scripts/preflight.sh", "scripts/preflight.sh", False),
     ("echo 'nightly runs scripts/preflight.sh'", "scripts/preflight.sh", False),
+    ("bash -eu -o pipefail scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("/usr/bin/env bash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("command bash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("exec bash scripts/preflight.sh", "scripts/preflight.sh", True),
+    ("bash -- scripts/preflight.sh", "scripts/preflight.sh", True),
+    # 함수로 감싸도 «불리면» 실행이다
+    ("gate() {\n  bash scripts/preflight.sh\n}\ngate", "scripts/preflight.sh", True),
+    ("if false; then bash scripts/preflight.sh; fi", "scripts/preflight.sh", False),
+    ("if false; then\n  bash scripts/preflight.sh\nfi", "scripts/preflight.sh", False),
+    # 정의만 하고 부르지 않는 함수
+    ("gate() {\n  bash scripts/preflight.sh\n}\necho skipped", "scripts/preflight.sh", False),
+    ("cat <<EOF\nbash scripts/preflight.sh\nEOF", "scripts/preflight.sh", False),
+    ("bash -c 'echo scripts/preflight.sh'", "scripts/preflight.sh", False),
+    ("printf '%s' bash scripts/preflight.sh", "scripts/preflight.sh", False),
 ]
 
 

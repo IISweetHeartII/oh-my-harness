@@ -42,3 +42,11 @@ jobs:
       # that second question by breaking each rule on purpose.
       - name: scripts/preflight.sh
         run: bash scripts/preflight.sh
+
+      # preflight 의 «자기 보고» 를 믿지 않는 한 스텝. 스크립트 끝을 `exit 0` 으로
+      # 바꾸면 모든 게이트가 빨개져도 rc=0 이 나간다 — 스크립트는 자기 종료코드를
+      # 검사할 수 없다. 그래서 그 한 가지만 밖에서 다시 묻는다.
+      # 게이트 목록을 여기 다시 나열하는 것과는 다르다: 이건 방금 돌린 스크립트가
+      # 온전한지 묻는 무결성 확인이고, `ci-runs-preflight` 가 이 줄을 «요구» 한다.
+      - name: preflight integrity (does not trust the exit code above)
+        run: python3 scripts/validate_repository.py --only preflight-stages

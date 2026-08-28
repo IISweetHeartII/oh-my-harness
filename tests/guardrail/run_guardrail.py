@@ -316,6 +316,86 @@ def break_dead_api_build_dir(repo: Path) -> str:
     return "a removed API in docs/build/, which this repository writes"
 
 
+def break_preflight_exit_code(repo: Path) -> str:
+    """`exit 0` in place of `exit $fail`.
+
+    Every gate can go red and the script still reports success. No self-check
+    inside preflight can see this — the script cannot inspect its own exit
+    code — so the pairing is this gate plus the integrity step CI runs after.
+    """
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    if "\nexit $fail\n" not in text:
+        raise AssertionError("preflight.sh no longer ends with `exit $fail`")
+    p.write_text(text.replace("\nexit $fail\n", "\nexit 0\n", 1), encoding="utf-8")
+    return "preflight reporting success no matter what its stages did"
+
+
+def break_preflight_runner_duplicate(repo: Path) -> str:
+    """A second run() definition; the canonical first one becomes decoration."""
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    call = 'run "guardrail self-test"'
+    if call not in text:
+        raise AssertionError("preflight.sh no longer has the self-test call line")
+    tamper = ('run() { printf \'\\n== %s\\n\' "$1"; shift; stages_run=$((stages_run + 1)); "$@" || fail=1; }'.replace('"$@" || fail=1; }',
+                                'case "$*" in *--self-test*) return 0;; esac; "$@" || fail=1; }'))
+    p.write_text(text.replace(call, tamper + "\n" + call, 1), encoding="utf-8")
+    return "a second run() definition that overrides the canonical one"
+
+
+def break_preflight_runner_shadow(repo: Path) -> str:
+    """A shell function named after the interpreter — every stage becomes a no-op."""
+    p = repo / "scripts" / "preflight.sh"
+    text = p.read_text(encoding="utf-8")
+    call = 'run "guardrail self-test"'
+    if call not in text:
+        raise AssertionError("preflight.sh no longer has the self-test call line")
+    p.write_text(text.replace(call, 'python3() { return 0; }\n' + call, 1), encoding="utf-8")
+    return "a shell function named python3 shadowing the interpreter"
+
+
+def break_ci_integrity_step(repo: Path) -> str:
+    """CI drops the step that does not trust preflight's exit code."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    line = "        run: python3 scripts/validate_repository.py --only preflight-stages\n"
+    if line not in text:
+        raise AssertionError("validation.yml has no integrity step to remove")
+    wf.write_text(text.replace(line, "        run: echo integrity skipped\n", 1),
+                  encoding="utf-8")
+    return "CI dropping the step that checks preflight's own integrity"
+
+
+def break_ci_nest_switch(repo: Path) -> str:
+    """CI setting the variable that switches off the enforcement check."""
+    wf = repo / ".github" / "workflows" / "validation.yml"
+    text = wf.read_text(encoding="utf-8")
+    line = "        run: bash scripts/preflight.sh\n"
+    if line not in text:
+        raise AssertionError("validation.yml no longer runs preflight the way this case expects")
+    wf.write_text(text.replace(
+        line, "        run: OH_MY_HARNESS_GUARDRAIL_NEST=1 bash scripts/preflight.sh\n", 1),
+        encoding="utf-8")
+    return "CI switching off the check that preflight enforces its gates"
+
+
+def break_guardrail_section(repo: Path) -> str:
+    """Delete the line that runs one whole section of this suite.
+
+    Nothing inside the suite notices: the summary sentence gets shorter and
+    every remaining case still passes. Same shape as the preflight stage that
+    nobody was watching, one level in.
+    """
+    p = repo / "tests" / "guardrail" / "run_guardrail.py"
+    text = p.read_text(encoding="utf-8")
+    line = "    guardrail_preflight_enforces(failures, args.verbose)\n"
+    if line not in text:
+        raise AssertionError("the suite no longer calls guardrail_preflight_enforces")
+    p.write_text(text.replace(line, "", 1), encoding="utf-8")
+    return "a whole guardrail section that nothing calls any more"
+
+
 def break_size_budget(repo: Path) -> str:
     path = repo / "skills" / "harness" / "SKILL.md"
     with path.open("a", encoding="utf-8") as fh:
@@ -355,6 +435,12 @@ CASES = {
     "preflight-run-tampered": break_preflight_runner,
     "dead-api-stale-allowlist": break_dead_api_stale_allowlist,
     "dead-api-build-dir": break_dead_api_build_dir,
+    "preflight-exit-code": break_preflight_exit_code,
+    "preflight-runner-duplicate": break_preflight_runner_duplicate,
+    "preflight-runner-shadow": break_preflight_runner_shadow,
+    "ci-integrity-step": break_ci_integrity_step,
+    "ci-nest-switch": break_ci_nest_switch,
+    "guardrail-section-removed": break_guardrail_section,
 }
 
 
@@ -795,6 +881,76 @@ def guardrail_harness_lint(failures: list[str], verbose: bool) -> None:
 
 # --------------------------------------------------------------------------
 
+# preflight 를 재귀 없이 돌리기 위한 표시. `ci-runs-preflight` 가 CI 의 실행 단계에서
+# 이 이름을 금지한다 — 아래 강제 확인을 끄는 스위치이기 때문이다.
+NEST_ENV = "OH_MY_HARNESS_GUARDRAIL_NEST"
+
+# (무엇을 깨뜨리나, 파일, 앵커, 대체) — 각각 «그 단계만» 잡는 결함이다.
+PREFLIGHT_ENFORCEMENT = [
+    ("the guardrail's judge",
+     "tests/guardrail/run_guardrail.py",
+     '    if result.returncode == 0:\n        return "did NOT fail"\n',
+     '    return None\n    if result.returncode == 0:\n        return "did NOT fail"\n'),
+    ("the validator's _invokes",
+     "scripts/validate_repository.py",
+     "    parts = re.split(",
+     "    return script in command\n    parts = re.split("),
+]
+
+
+def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
+    """Prove preflight.sh *enforces* — by running the real script on a broken tree.
+
+    Pinning the runner's source text catches the tamper already seen; it does
+    not catch the next one. Three more got through it in one sitting, each
+    keeping the call line and the stage count intact:
+
+      · a second `run()` definition overriding the canonical first
+      · a shell function named `python3` shadowing the interpreter
+      · `exit 0` where `exit $fail` belongs
+
+    So ask the question directly instead of by proxy. Break a judge that only
+    one stage can catch, run `bash scripts/preflight.sh`, and require a
+    non-zero exit. Whatever route the neutering takes, the answer is the same.
+
+    The pristine half needs no separate run: this suite *is* a preflight stage,
+    so a green outer preflight already proves the clean tree passes.
+    """
+    if os.environ.get(NEST_ENV):
+        print("  --  preflight enforcement: skipped (already inside a preflight run)")
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, (label, relpath, anchor, replacement) in enumerate(PREFLIGHT_ENFORCEMENT):
+            broken = Path(tmp) / f"enforce-{i}"
+            copy_tree(broken)
+            target = broken / relpath
+            text = target.read_text(encoding="utf-8")
+            if anchor not in text:
+                failures.append(f"preflight enforcement: the anchor for {label} is gone — "
+                                f"this case would prove nothing")
+                continue
+            target.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
+            # a mutation that does not parse is a syntax error, not a verdict
+            syn = subprocess.run([sys.executable, "-m", "py_compile", str(target)],
+                                 capture_output=True, text=True)
+            if syn.returncode != 0:
+                failures.append(f"preflight enforcement: breaking {label} left the file "
+                                f"unparseable — {syn.stderr.strip().splitlines()[-1][:100]}")
+                continue
+            res = subprocess.run(["bash", "scripts/preflight.sh"], cwd=broken,
+                                 capture_output=True, text=True,
+                                 env=dict(os.environ, **{NEST_ENV: "1"}))
+            if res.returncode == 0:
+                failures.append(
+                    f"preflight enforcement: {label} was broken and "
+                    f"`bash scripts/preflight.sh` still exited 0 — the script counts "
+                    f"its stages but does not enforce them")
+                if verbose:
+                    print(res.stdout[-2000:])
+            else:
+                print(f"  ok  preflight enforces:    red when {label} is broken")
+
+
 def verdict(result: subprocess.CompletedProcess, gate: str) -> str | None:
     """Return None if this run is real proof the rule fired, else why it is not.
 
@@ -914,6 +1070,12 @@ def main() -> int:
                "readme-rule-name": "lint-rule-docs",
                "preflight-stage-swapped": "preflight-stages",
                "preflight-run-tampered": "preflight-stages",
+               "preflight-exit-code": "preflight-stages",
+               "guardrail-section-removed": "preflight-stages",
+               "preflight-runner-duplicate": "preflight-stages",
+               "preflight-runner-shadow": "preflight-stages",
+               "ci-integrity-step": "ci-runs-preflight",
+               "ci-nest-switch": "ci-runs-preflight",
                "dead-api-stale-allowlist": "dead-api",
                "dead-api-build-dir": "dead-api",
                "ci-preflight-echo-only": "ci-runs-preflight",
@@ -965,6 +1127,7 @@ def main() -> int:
 
     guardrail_harness_lint(failures, args.verbose)
     guardrail_valid_variants(failures, args.verbose)
+    guardrail_preflight_enforces(failures, args.verbose)
 
     if failures:
         print("\nGuardrail suite failed:", file=sys.stderr)
@@ -976,8 +1139,10 @@ def main() -> int:
     lint_rules = len({LINT_ALIASES.get(c, c) for c in LINT_CASES})
     print(f"\nGuardrail suite passed: {repo_rules} repository rules "
           f"({len(CASES)} cases) + {lint_rules} harness-lint rules "
-          f"({len(LINT_CASES)} cases) proven to fire on broken input, and "
-          f"{len(VALID_VARIANTS)} legitimate variants proven to pass")
+          f"({len(LINT_CASES)} cases) proven to fire on broken input, "
+          f"{len(VALID_VARIANTS)} legitimate variants proven to pass, and "
+          f"preflight.sh proven to go red for {len(PREFLIGHT_ENFORCEMENT)} "
+          f"neutered judges")
     return 0
 
 
