@@ -379,7 +379,11 @@ def check_dead_api(errors: list[str]) -> None:
                     f"{rel(path)}:{lineno} contains removed API {token} with no justification. "
                     f"Delete it, or add to {rel(DEAD_API_ALLOWLIST)}: "
                     f'{{"path": "{rel(path)}", "token": "{token}", '
-                    f'"sha": "{_line_key(line)}", "reason": "<why this line must exist>"}}'
+                    f'"sha": "{key.split("|", 2)[2]}", '
+                    f'"reason": "<why this line must exist>"}}'
+                    + ("  (the `#N` suffix marks which occurrence of an identical "
+                       "line this is — without it the entry covers the first one)"
+                       if "#" in key else "")
                 )
                 continue
             seen.add(key)
@@ -642,7 +646,8 @@ CI_FORBIDDEN_MENTIONS = ("scripts/validate_repository.py",
 # 가드레일 스위트가 «반드시 부르는» 절. 한 줄을 지우면 그 절 전체가 조용히 사라진다 —
 # 스위트 안에서는 아무도 모르고, 요약 문장만 짧아진다. 그래서 밖에서 센다.
 REQUIRED_GUARDRAIL_SECTIONS = ("guardrail_harness_lint", "guardrail_valid_variants",
-                               "guardrail_preflight_enforces")
+                               "guardrail_preflight_enforces",
+                               "guardrail_allowlist_suggestion")
 
 # 가드레일이 preflight 를 재귀 없이 돌리기 위한 표시. 사본 안에만 만드는 «파일» 이다 —
 # 환경변수로 두었더니 워크플로우 밖에서 켜는 길이 여럿이었다(composite action 이

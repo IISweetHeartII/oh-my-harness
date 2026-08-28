@@ -1042,6 +1042,56 @@ PREFLIGHT_ENFORCEMENT = [
 ]
 
 
+def guardrail_allowlist_suggestion(failures: list[str], verbose: bool) -> None:
+    """The exemption the gate prints must actually work when pasted back.
+
+    Every other dead-api case proves the rule *fires*. None proved the way out
+    of it is usable — and it was not: with two identical lines in one file the
+    message printed the bare line hash, and pasting that entry verbatim left
+    the second occurrence still failing. A gate whose suggested fix does not
+    fix anything trains people to disable it.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp) / "suggestion"
+        copy_tree(repo)
+        allowlist = repo / "docs" / "dead-api-allowlist.json"
+        data = json.loads(allowlist.read_text(encoding="utf-8"))
+        entry = data["allow"][0]
+        target = repo / entry["path"]
+        lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
+        hit = next((i for i, l in enumerate(lines) if entry["token"] in l), None)
+        if hit is None:
+            failures.append(f"allowlist suggestion: {entry['path']} no longer contains "
+                            f"{entry['token']} — this case would prove nothing")
+            return
+        lines.insert(hit + 1, lines[hit])          # a second, identical occurrence
+        target.write_text("".join(lines), encoding="utf-8")
+
+        before = run_check(repo, "dead-api")
+        if before.returncode != 1:
+            failures.append("allowlist suggestion: duplicating an exempted line did not "
+                            "produce a finding, so there is no suggestion to test")
+            return
+        m = re.search(r'(\{"path".*?\})', before.stderr)
+        if not m:
+            failures.append("allowlist suggestion: the message no longer prints a "
+                            "ready-to-paste entry")
+            return
+        suggested = json.loads(m.group(1))
+        suggested["reason"] = "guardrail: the duplicated line under test"
+        data["allow"].append(suggested)
+        allowlist.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                             encoding="utf-8")
+
+        after = run_check(repo, "dead-api")
+        if after.returncode != 0:
+            failures.append("allowlist suggestion: pasting the printed entry verbatim "
+                            f"still fails — {after.stderr.strip().splitlines()[-1][:120]}")
+        else:
+            print(f"  ok  allowlist suggestion: pasting the printed entry "
+                  f"(sha {suggested['sha']}) resolves the finding")
+
+
 def guardrail_preflight_enforces(failures: list[str], verbose: bool) -> None:
     """Prove preflight.sh *enforces* — by running the real script on a broken tree.
 
@@ -1305,6 +1355,7 @@ def main() -> int:
     guardrail_harness_lint(failures, args.verbose)
     guardrail_valid_variants(failures, args.verbose)
     guardrail_preflight_enforces(failures, args.verbose)
+    guardrail_allowlist_suggestion(failures, args.verbose)
 
     if failures:
         print("\nGuardrail suite failed:", file=sys.stderr)
